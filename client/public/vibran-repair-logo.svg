@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Vibran Tech Repair Logo">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#4f46e5"/>
+      <stop offset="100%" stop-color="#0ea5e9"/>
+    </linearGradient>
+    <linearGradient id="metal" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#f8fafc"/>
+      <stop offset="100%" stop-color="#cbd5e1"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="24" y="24" width="464" height="464" rx="112" fill="url(#bg)"/>
+
+  <rect x="146" y="86" width="220" height="340" rx="34" fill="#0f172a" opacity="0.22"/>
+  <rect x="156" y="96" width="200" height="320" rx="28" fill="#0f172a"/>
+  <rect x="176" y="126" width="160" height="232" rx="16" fill="#0b1024"/>
+
+  <circle cx="256" cy="384" r="9" fill="#94a3b8"/>
+  <rect x="232" y="108" width="48" height="6" rx="3" fill="#94a3b8"/>
+
+  <g transform="translate(255 257) rotate(-28) translate(-255 -257)">
+    <path d="M322 196c-13 0-25 4-35 11l-27-27c7-10 11-22 11-35 0-8-2-16-5-24l-42 42 14 28-39 39-28-14-42 42c8 3 16 5 24 5 13 0 25-4 35-11l27 27c-7 10-11 22-11 35 0 8 2 16 5 24l42-42-14-28 39-39 28 14 42-42c-8-3-16-5-24-5z" fill="url(#metal)"/>
+    <circle cx="256" cy="257" r="18" fill="#1e293b"/>
+  </g>
+
+  <circle cx="392" cy="122" r="14" fill="#22d3ee"/>
+  <circle cx="118" cy="394" r="10" fill="#38bdf8"/>
+</svg>

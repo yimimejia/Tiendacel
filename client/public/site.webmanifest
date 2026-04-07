@@ -1,0 +1,16 @@
+{
+  "name": "Vibran Tech",
+  "short_name": "Vibran",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f8ff",
+  "theme_color": "#4f46e5",
+  "icons": [
+    {
+      "src": "/vibran-repair-logo.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
