@@ -14,7 +14,7 @@ const loginSchema = z.object({ username_or_email: z.string().min(3), password: z
 type LoginInput = z.infer<typeof loginSchema>;
 
 const branchSchema = z.object({ name: z.string().min(2), code: z.string().min(2), address: z.string().min(3), phone: z.string().min(5) });
-const customerSchema = z.object({ full_name: z.string().min(2), phone: z.string().min(5), email: z.string().email().optional().or(z.literal('')) });
+const customerSchema = z.object({ full_name: z.string().min(2), phone: z.string().min(5), email: z.string().email().optional().or(z.literal('')), branch_id: z.coerce.number().int().positive().optional() });
 
 interface RepairItem {
   id: number;
@@ -150,17 +150,23 @@ export function UsuariosPage() {
 
 export function ClientesPage() {
   const queryClient = useQueryClient();
+  const me = useMe();
+  const branches = useQuery({ queryKey: ['branches'], enabled: me.data?.role === 'administrador_general', queryFn: async () => (await apiRequest<any[]>('/branches')).data });
   const list = useQuery({ queryKey: ['customers'], queryFn: async () => (await apiRequest<any[]>('/customers')).data });
   const form = useForm<z.infer<typeof customerSchema>>({ resolver: zodResolver(customerSchema) });
   const mutation = useMutation({
-    mutationFn: async (payload: z.infer<typeof customerSchema>) => apiRequest('/customers', { method: 'POST', body: JSON.stringify(payload) }),
+    mutationFn: async (payload: z.infer<typeof customerSchema>) =>
+      apiRequest('/customers', {
+        method: 'POST',
+        body: JSON.stringify({ ...payload, branch_id: payload.branch_id ? Number(payload.branch_id) : undefined }),
+      }),
     onSuccess: () => {
       form.reset();
       queryClient.invalidateQueries({ queryKey: ['customers'] });
     },
   });
 
-  if (list.isLoading) return <LoadingState />;
+  if (list.isLoading || me.isLoading || branches.isLoading) return <LoadingState />;
   if (list.error) return <ErrorState message={(list.error as Error).message} />;
 
   return (
@@ -170,6 +176,14 @@ export function ClientesPage() {
         <input className="rounded border px-2 py-1" placeholder="Nombre completo" {...form.register('full_name')} />
         <input className="rounded border px-2 py-1" placeholder="Teléfono" {...form.register('phone')} />
         <input className="rounded border px-2 py-1" placeholder="Correo (opcional)" {...form.register('email')} />
+        {me.data?.role === 'administrador_general' ? (
+          <select className="rounded border px-2 py-1" {...form.register('branch_id', { valueAsNumber: true })}>
+            <option value="">Selecciona sucursal</option>
+            {(branches.data ?? []).map((branch) => (
+              <option key={branch.id} value={branch.id}>{branch.name}</option>
+            ))}
+          </select>
+        ) : null}
         <button className="rounded bg-slate-900 px-3 py-2 text-white md:col-span-3" disabled={mutation.isPending}>Crear cliente</button>
       </form>
       {mutation.error ? <ErrorState message={(mutation.error as Error).message} /> : null}

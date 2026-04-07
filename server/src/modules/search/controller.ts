@@ -5,5 +5,11 @@ import { globalSearch } from './service.js';
 export async function globalSearchController(req: Request, res: Response) {
   const q = String(req.query.q ?? '').trim();
   if (!q) return sendSuccess(res, 'Búsqueda vacía', { customers: [], devices: [], products: [], sales: [] });
-  return sendSuccess(res, 'Búsqueda global completada', await globalSearch(q));
+
+  const data = await globalSearch(q, {
+    role: String(req.user?.role),
+    branchId: req.user?.branchId ? Number(req.user.branchId) : null,
+  });
+
+  return sendSuccess(res, 'Búsqueda global completada', data);
 }

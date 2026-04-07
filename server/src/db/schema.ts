@@ -50,6 +50,9 @@ export const inventoryMovementTypeEnum = pgEnum('inventory_movement_type_enum', 
 
 export const inventoryTransferStatusEnum = pgEnum('inventory_transfer_status_enum', ['creada', 'en_transito', 'completada', 'cancelada']);
 
+export const fiscalRangeStatusEnum = pgEnum('fiscal_range_status_enum', ['activo', 'agotado', 'vencido', 'inactivo']);
+export const invoiceStatusEnum = pgEnum('invoice_status_enum', ['emitida', 'anulada']);
+
 export const roles = pgTable('roles', {
   id: serial('id').primaryKey(),
   name: varchar('name', { length: 80 }).notNull().unique(),
@@ -103,16 +106,130 @@ export const customers = pgTable(
     nationalId: varchar('national_id', { length: 40 }),
     address: text('address'),
     email: varchar('email', { length: 160 }),
+    branchId: integer('branch_id').notNull().references(() => branches.id),
     alertNote: text('alert_note'),
     ...timestamps,
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (table) => [
-    unique('uniq_customers_full_name_phone').on(table.fullName, table.phone),
+    unique('uniq_customers_branch_full_name_phone').on(table.branchId, table.fullName, table.phone),
     index('idx_customers_full_name').on(table.fullName),
     index('idx_customers_phone').on(table.phone),
     index('idx_customers_national_id').on(table.nationalId),
+    index('idx_customers_branch_id').on(table.branchId),
   ],
+);
+
+
+export const branchSettings = pgTable(
+  'branch_settings',
+  {
+    id: serial('id').primaryKey(),
+    branchId: integer('branch_id').notNull().references(() => branches.id).unique(),
+    businessName: varchar('business_name', { length: 180 }),
+    logoUrl: text('logo_url'),
+    address: text('address'),
+    phone: varchar('phone', { length: 30 }),
+    email: varchar('email', { length: 160 }),
+    rnc: varchar('rnc', { length: 40 }),
+    fiscalName: varchar('fiscal_name', { length: 180 }),
+    receiptFooter: text('receipt_footer'),
+    invoiceFooter: text('invoice_footer'),
+    warrantyDaysDefault: integer('warranty_days_default').notNull().default(30),
+    blockDeliveryWithBalance: boolean('block_delivery_with_balance').notNull().default(false),
+    featureFlags: jsonb('feature_flags').notNull().default(sql`'{}'::jsonb`),
+    ...timestamps,
+  },
+  (table) => [index('idx_branch_settings_branch_id').on(table.branchId)],
+);
+
+export const fiscalVoucherTypes = pgTable('fiscal_voucher_types', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 120 }).notNull(),
+  code: varchar('code', { length: 40 }).notNull().unique(),
+  description: text('description'),
+  active: boolean('active').notNull().default(true),
+  ...timestamps,
+});
+
+export const branchFiscalVoucherTypes = pgTable(
+  'branch_fiscal_voucher_types',
+  {
+    id: serial('id').primaryKey(),
+    branchId: integer('branch_id').notNull().references(() => branches.id),
+    voucherTypeId: integer('voucher_type_id').notNull().references(() => fiscalVoucherTypes.id),
+    active: boolean('active').notNull().default(true),
+    prefix: varchar('prefix', { length: 20 }),
+    series: varchar('series', { length: 20 }),
+    currentInternalSequence: integer('current_internal_sequence').notNull().default(0),
+    invoicePrefix: varchar('invoice_prefix', { length: 20 }),
+    ...timestamps,
+  },
+  (table) => [
+    unique('uniq_branch_voucher_type').on(table.branchId, table.voucherTypeId),
+    index('idx_branch_voucher_branch_id').on(table.branchId),
+  ],
+);
+
+export const fiscalRanges = pgTable(
+  'fiscal_ranges',
+  {
+    id: serial('id').primaryKey(),
+    branchId: integer('branch_id').notNull().references(() => branches.id),
+    voucherTypeId: integer('voucher_type_id').notNull().references(() => fiscalVoucherTypes.id),
+    rangeStart: integer('range_start').notNull(),
+    rangeEnd: integer('range_end').notNull(),
+    nextNumber: integer('next_number').notNull(),
+    totalAvailable: integer('total_available').notNull(),
+    totalUsed: integer('total_used').notNull().default(0),
+    status: fiscalRangeStatusEnum('status').notNull().default('activo'),
+    expiresAt: date('expires_at'),
+    observations: text('observations'),
+    ...timestamps,
+  },
+  (table) => [
+    index('idx_fiscal_ranges_branch_id').on(table.branchId),
+    index('idx_fiscal_ranges_voucher_type_id').on(table.voucherTypeId),
+  ],
+);
+
+export const invoices = pgTable(
+  'invoices',
+  {
+    id: serial('id').primaryKey(),
+    branchId: integer('branch_id').notNull().references(() => branches.id),
+    customerId: integer('customer_id').notNull().references(() => customers.id),
+    saleId: integer('sale_id'),
+    invoiceNumber: varchar('invoice_number', { length: 80 }).notNull(),
+    voucherTypeId: integer('voucher_type_id').notNull().references(() => fiscalVoucherTypes.id),
+    fiscalRangeId: integer('fiscal_range_id').references(() => fiscalRanges.id),
+    ncfNumber: varchar('ncf_number', { length: 80 }),
+    subtotal: numeric('subtotal', { precision: 12, scale: 2 }).notNull(),
+    taxTotal: numeric('tax_total', { precision: 12, scale: 2 }).notNull().default('0'),
+    total: numeric('total', { precision: 12, scale: 2 }).notNull(),
+    issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+    issuedByUserId: integer('issued_by_user_id').notNull().references(() => users.id),
+    status: invoiceStatusEnum('status').notNull().default('emitida'),
+    ...timestamps,
+  },
+  (table) => [
+    unique('uniq_invoices_branch_invoice_number').on(table.branchId, table.invoiceNumber),
+    index('idx_invoices_branch_id').on(table.branchId),
+    index('idx_invoices_customer_id').on(table.customerId),
+  ],
+);
+
+export const invoiceItems = pgTable(
+  'invoice_items',
+  {
+    id: serial('id').primaryKey(),
+    invoiceId: integer('invoice_id').notNull().references(() => invoices.id),
+    description: text('description').notNull(),
+    qty: integer('qty').notNull(),
+    unitPrice: numeric('unit_price', { precision: 12, scale: 2 }).notNull(),
+    lineTotal: numeric('line_total', { precision: 12, scale: 2 }).notNull(),
+  },
+  (table) => [index('idx_invoice_items_invoice_id').on(table.invoiceId)],
 );
 
 export const deviceTypes = pgTable('device_types', {

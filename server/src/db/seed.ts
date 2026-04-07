@@ -6,6 +6,8 @@ import { Pool } from 'pg';
 import {
   auditLogs,
   branches,
+  branchFiscalVoucherTypes,
+  branchSettings,
   customers,
   devicePayments,
   deviceStatusHistory,
@@ -15,6 +17,7 @@ import {
   inventoryMovements,
   inventoryTransferItems,
   inventoryTransfers,
+  fiscalVoucherTypes,
   productCategories,
   products,
   roles,
@@ -83,6 +86,30 @@ async function runSeed() {
     ? [northBranch]
     : await db.select().from(branches).where(eq(branches.code, 'NOR-002')).limit(1);
 
+  // Configuración base por sucursal (aislamiento operativo)
+  await db
+    .insert(branchSettings)
+    .values([
+      { branchId: main.id, businessName: 'Vibran Tech - Principal', warrantyDaysDefault: 30, blockDeliveryWithBalance: true, featureFlags: { fiscal_enabled: true } },
+      { branchId: north.id, businessName: 'Vibran Tech - Norte', warrantyDaysDefault: 15, blockDeliveryWithBalance: false, featureFlags: { fiscal_enabled: false } },
+    ])
+    .onConflictDoNothing({ target: branchSettings.branchId });
+
+  for (const item of [
+    { name: 'Consumidor Final', code: 'CF' },
+    { name: 'Crédito Fiscal', code: 'CCF' },
+  ]) {
+    await db.insert(fiscalVoucherTypes).values({ name: item.name, code: item.code, description: `Tipo fiscal ${item.name}` }).onConflictDoNothing({ target: fiscalVoucherTypes.code });
+  }
+
+  const voucherTypes = await db.select().from(fiscalVoucherTypes);
+  for (const vt of voucherTypes) {
+    await db.insert(branchFiscalVoucherTypes).values([
+      { branchId: main.id, voucherTypeId: vt.id, active: true, prefix: 'B0', series: 'A', currentInternalSequence: 0, invoicePrefix: 'FAC-A' },
+      { branchId: north.id, voucherTypeId: vt.id, active: true, prefix: 'B0', series: 'B', currentInternalSequence: 0, invoicePrefix: 'FAC-B' },
+    ]).onConflictDoNothing({ target: [branchFiscalVoucherTypes.branchId, branchFiscalVoucherTypes.voucherTypeId] });
+  }
+
   const adminUser = await db
     .insert(users)
     .values({
@@ -145,16 +172,16 @@ async function runSeed() {
   }
 
   const seededCustomers = [
-    { fullName: 'Carlos Mejía', phone: '+1-305-555-0120', email: 'carlos@correo.com' },
-    { fullName: 'Laura Ruiz', phone: '+1-305-555-0121', email: 'laura@correo.com' },
-    { fullName: 'Miguel Torres', phone: '+1-305-555-0122', email: 'miguel@correo.com' },
+    { fullName: 'Carlos Mejía', phone: '+1-305-555-0120', email: 'carlos@correo.com', branchId: main.id },
+    { fullName: 'Laura Ruiz', phone: '+1-305-555-0121', email: 'laura@correo.com', branchId: north.id },
+    { fullName: 'Miguel Torres', phone: '+1-305-555-0122', email: 'miguel@correo.com', branchId: main.id },
   ];
 
   for (const customer of seededCustomers) {
     await db
       .insert(customers)
       .values(customer)
-      .onConflictDoNothing({ target: [customers.fullName, customers.phone] as never });
+      .onConflictDoNothing({ target: [customers.branchId, customers.fullName, customers.phone] as never });
   }
 
   const allCustomers = await db.select().from(customers);

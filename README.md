@@ -136,6 +136,14 @@ Con esta opción, el backend sirve la SPA y evita errores al recargar rutas.
 - Manejo de errores centralizado sin exponer stack en producción.
 - JWT configurable por `JWT_SECRET`.
 
+
+## Aislamiento absoluto por sucursal (regla maestra)
+- Toda entidad operativa se consulta/crea/edita respetando `branch_id` desde backend.
+- Solo `administrador_general` tiene vista global multi-sucursal.
+- `encargado_sucursal` y roles operativos quedan aislados a su sucursal.
+- Búsqueda global, clientes y reparaciones aplican filtros de sucursal en capa de servicio.
+- Configuración operativa por sucursal se gestiona en `branch_settings` (incluye feature flags).
+
 ## 12) Módulos principales
 - Auth / sesión
 - Sucursales

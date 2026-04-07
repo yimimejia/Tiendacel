@@ -10,6 +10,7 @@ import { settingsRoutes } from '../modules/settings/routes.js';
 import { searchRoutes } from '../modules/search/routes.js';
 import { uploadsRoutes } from '../modules/uploads/routes.js';
 import { repairsRoutes } from '../modules/repairs/routes.js';
+import { branchSettingsRoutes } from '../modules/branch-settings/routes.js';
 
 const router = Router();
 
@@ -31,5 +32,6 @@ router.use('/settings', settingsRoutes);
 router.use('/search', searchRoutes);
 router.use('/uploads', uploadsRoutes);
 router.use('/repairs', repairsRoutes);
+router.use('/branch-settings', branchSettingsRoutes);
 
 export { router as apiRouter };

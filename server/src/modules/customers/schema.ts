@@ -9,6 +9,7 @@ export const createCustomerSchema = z.object({
   address: z.string().nullable().optional(),
   email: z.string().email().nullable().optional(),
   alert_note: z.string().nullable().optional(),
+  branch_id: z.coerce.number().int().positive().optional(),
 });
 
 export const updateCustomerSchema = createCustomerSchema.partial();
