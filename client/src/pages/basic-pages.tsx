@@ -16,6 +16,23 @@ type LoginInput = z.infer<typeof loginSchema>;
 const branchSchema = z.object({ name: z.string().min(2), code: z.string().min(2), address: z.string().min(3), phone: z.string().min(5) });
 const customerSchema = z.object({ full_name: z.string().min(2), phone: z.string().min(5), email: z.string().email().optional().or(z.literal('')) });
 
+interface RepairItem {
+  id: number;
+  repair_number: string;
+  branch_id: number;
+  brand: string;
+  model: string;
+  internal_status: string;
+  technician_id: number | null;
+  technician_name: string | null;
+  assignment_status: 'asignado' | 'sin_asignar';
+}
+
+interface AssignableTech {
+  id: number;
+  full_name: string;
+}
+
 function Table({ rows }: { rows: Record<string, unknown>[] }) {
   return (
     <div className="overflow-x-auto rounded-xl border bg-white">
@@ -210,11 +227,113 @@ export function ClienteDetallePage() {
   );
 }
 
+export function ReparacionesPage() {
+  const me = useMe();
+  const queryClient = useQueryClient();
+  const repairsQuery = useQuery({ queryKey: ['repairs'], queryFn: async () => (await apiRequest<RepairItem[]>('/repairs')).data });
+  const techniciansQuery = useQuery({
+    queryKey: ['repairs-technicians', me.data?.branch_id],
+    enabled: me.data?.role === 'administrador_general' || me.data?.role === 'encargado_sucursal',
+    queryFn: async () =>
+      (await apiRequest<AssignableTech[]>(`/repairs/assignable-technicians${me.data?.role === 'administrador_general' && me.data?.branch_id ? `?branch_id=${me.data.branch_id}` : ''}`)).data,
+  });
+
+  const takeWorkMutation = useMutation({
+    mutationFn: async (repairId: number) => apiRequest(`/repairs/${repairId}/take-work`, { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['repairs'] }),
+  });
+
+  const assignMutation = useMutation({
+    mutationFn: async ({ repairId, technician_id }: { repairId: number; technician_id: number | null }) =>
+      apiRequest(`/repairs/${repairId}/assignment`, { method: 'PATCH', body: JSON.stringify({ technician_id }) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['repairs'] }),
+  });
+
+  if (repairsQuery.isLoading || me.isLoading) return <LoadingState />;
+  if (repairsQuery.error) return <ErrorState message={(repairsQuery.error as Error).message} />;
+
+  const repairs = repairsQuery.data ?? [];
+
+  return (
+    <section className="space-y-4">
+      <PanelTitulo titulo="Reparaciones" descripcion="Asignación por técnico, trabajos sin asignar y toma de trabajo." />
+      {repairs.length === 0 ? <EmptyState message="No hay reparaciones." /> : null}
+      {repairs.length > 0 ? (
+        <div className="overflow-x-auto rounded-xl border bg-white">
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-100">
+              <tr>
+                <th className="px-3 py-2 text-left">#</th>
+                <th className="px-3 py-2 text-left">Equipo</th>
+                <th className="px-3 py-2 text-left">Estado</th>
+                <th className="px-3 py-2 text-left">Asignación</th>
+                <th className="px-3 py-2 text-left">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {repairs.map((repair) => (
+                <tr key={repair.id} className="border-t align-top">
+                  <td className="px-3 py-2 font-medium">{repair.repair_number}</td>
+                  <td className="px-3 py-2">{repair.brand} {repair.model}</td>
+                  <td className="px-3 py-2">{repair.internal_status}</td>
+                  <td className="px-3 py-2">
+                    {repair.technician_name ? (
+                      <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">{repair.technician_name}</span>
+                    ) : (
+                      <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">Sin asignar</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 space-y-2">
+                    {me.data?.role === 'tecnico' && repair.assignment_status === 'sin_asignar' ? (
+                      <button
+                        className="rounded border px-2 py-1 text-xs hover:bg-slate-50"
+                        onClick={() => takeWorkMutation.mutate(repair.id)}
+                        disabled={takeWorkMutation.isPending}
+                      >
+                        Tomar trabajo
+                      </button>
+                    ) : null}
+
+                    {(me.data?.role === 'administrador_general' || me.data?.role === 'encargado_sucursal') ? (
+                      <div className="flex flex-wrap gap-2">
+                        <select
+                          className="rounded border px-2 py-1 text-xs"
+                          defaultValue={repair.technician_id ?? ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            assignMutation.mutate({ repairId: repair.id, technician_id: value ? Number(value) : null });
+                          }}
+                        >
+                          <option value="">Sin asignar</option>
+                          {(techniciansQuery.data ?? []).map((tech) => (
+                            <option key={tech.id} value={tech.id}>{tech.full_name}</option>
+                          ))}
+                        </select>
+                        {repair.technician_id ? (
+                          <button
+                            className="rounded border px-2 py-1 text-xs hover:bg-slate-50"
+                            onClick={() => assignMutation.mutate({ repairId: repair.id, technician_id: null })}
+                          >
+                            Quitar asignación
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function Pendiente({ titulo }: { titulo: string }) {
   return <EmptyState message={`${titulo}: pendiente de backend completo para este módulo.`} />;
 }
 
-export const ReparacionesPage = () => <Pendiente titulo="Reparaciones" />;
 export const NuevaReparacionPage = () => <Pendiente titulo="Nueva reparación" />;
 export const InventarioPage = () => <Pendiente titulo="Inventario" />;
 export const MovimientosInventarioPage = () => <Pendiente titulo="Movimientos de inventario" />;

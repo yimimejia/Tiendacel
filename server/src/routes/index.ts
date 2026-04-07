@@ -9,6 +9,7 @@ import { usersRoutes } from '../modules/users/routes.js';
 import { settingsRoutes } from '../modules/settings/routes.js';
 import { searchRoutes } from '../modules/search/routes.js';
 import { uploadsRoutes } from '../modules/uploads/routes.js';
+import { repairsRoutes } from '../modules/repairs/routes.js';
 
 const router = Router();
 
@@ -29,5 +30,6 @@ router.use('/customers', customersRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/search', searchRoutes);
 router.use('/uploads', uploadsRoutes);
+router.use('/repairs', repairsRoutes);
 
 export { router as apiRouter };
