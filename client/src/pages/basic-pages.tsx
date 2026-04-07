@@ -82,7 +82,8 @@ interface SubscriptionRow {
   paymentDay: number;
   nextDueDate: string;
   notes: string | null;
-  status: 'rojo' | 'amarillo' | 'verde';
+  isPaused: boolean;
+  status: 'rojo' | 'amarillo' | 'verde' | 'pausado';
 }
 
 interface PaymentRecord {
@@ -101,6 +102,7 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; label: string }>
   amarillo: { bg: 'bg-yellow-100 border-yellow-400', text: 'text-yellow-700', label: 'Próximo' },
   verde: { bg: 'bg-green-100 border-green-400', text: 'text-green-700', label: 'Al día' },
   sin_configurar: { bg: 'bg-slate-100 border-slate-300', text: 'text-slate-500', label: 'Sin configurar' },
+  pausado: { bg: 'bg-orange-100 border-orange-400', text: 'text-orange-700', label: 'Pausado' },
 };
 
 const DOT_COLORS: Record<string, string> = {
@@ -108,6 +110,7 @@ const DOT_COLORS: Record<string, string> = {
   amarillo: 'bg-yellow-400',
   verde: 'bg-green-500',
   sin_configurar: 'bg-slate-400',
+  pausado: 'bg-orange-500',
 };
 
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
@@ -291,7 +294,7 @@ export function DashboardPage() {
   );
 }
 
-function SubscriptionDetail({ branchId, onClose }: { branchId: number; onClose: () => void }) {
+function SubscriptionDetail({ branchId, onClose, initialTab = 'pago' }: { branchId: number; onClose: () => void; initialTab?: 'pago' | 'editar' }) {
   const queryClient = useQueryClient();
   const me = useMe();
   const historyQuery = useQuery({
@@ -455,9 +458,11 @@ function SubscriptionDetail({ branchId, onClose }: { branchId: number; onClose: 
 
 export function SucursalesPage() {
   const me = useMe();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const role = me.data?.role ?? '';
   const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
+  const [detailTab, setDetailTab] = useState<'pago' | 'editar'>('pago');
   const [showCreate, setShowCreate] = useState(false);
 
   const subscriptions = useQuery({
@@ -484,6 +489,24 @@ export function SucursalesPage() {
       queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
     },
   });
+
+  const pauseMutation = useMutation({
+    mutationFn: async ({ branchId, pause }: { branchId: number; pause: boolean }) =>
+      apiRequest(`/subscriptions/${branchId}/pause`, { method: 'PATCH', body: JSON.stringify({ pause }) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+    },
+  });
+
+  const handleEnter = (sub: SubscriptionRow) => {
+    sessionStorage.setItem('impersonatedBranch', JSON.stringify({
+      branchId: sub.branchId,
+      branchName: sub.branchName,
+      branchCode: sub.branchCode,
+    }));
+    navigate('/dashboard');
+    window.location.reload();
+  };
 
   if (me.isLoading) return <LoadingState />;
 
@@ -524,37 +547,60 @@ export function SucursalesPage() {
           {subs.map((sub) => {
             const sc = STATUS_COLORS[sub.status];
             const dotColor = DOT_COLORS[sub.status];
+            const isPausing = pauseMutation.isPending;
             return (
-              <div
-                key={sub.id}
-                className={`rounded-xl border-2 ${sc.bg} p-4 cursor-pointer hover:shadow-md transition-shadow`}
-                onClick={() => setSelectedBranchId(sub.branchId)}
-              >
+              <div key={sub.branchId} className={`rounded-xl border-2 ${sc.bg} p-4 flex flex-col gap-3`}>
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${dotColor}`} />
                       <h3 className="font-semibold text-slate-900 truncate">{sub.branchName}</h3>
                     </div>
-                    <p className="mt-1 text-xs text-slate-500">Código: {sub.branchCode}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">Código: {sub.branchCode}</p>
                   </div>
                   <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-semibold ${sc.text} bg-white/60`}>
                     {sc.label}
                   </span>
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
                     <p className="text-slate-500">Vencimiento</p>
-                    <p className="font-medium">{sub.nextDueDate}</p>
+                    <p className="font-medium">{sub.nextDueDate ?? '—'}</p>
                   </div>
                   <div>
                     <p className="text-slate-500">Cuota mensual</p>
                     <p className="font-medium">${Number(sub.monthlyFee).toFixed(2)}</p>
                   </div>
                 </div>
-                <div className="mt-3">
-                  <Btn size="sm" variant="soft" onClick={(e) => { e?.stopPropagation?.(); setSelectedBranchId(sub.branchId); }}>
-                    Ver historial / Gestionar
+                <div className="flex flex-wrap gap-1.5 pt-1 border-t border-black/5">
+                  <Btn
+                    size="sm"
+                    variant="primary"
+                    onClick={() => { setSelectedBranchId(sub.branchId); setDetailTab('pago'); }}
+                  >
+                    Registrar pago
+                  </Btn>
+                  <Btn
+                    size="sm"
+                    variant="soft"
+                    onClick={() => { setSelectedBranchId(sub.branchId); setDetailTab('editar'); }}
+                  >
+                    Editar
+                  </Btn>
+                  <Btn
+                    size="sm"
+                    variant={sub.isPaused ? 'primary' : 'danger'}
+                    disabled={isPausing}
+                    onClick={() => pauseMutation.mutate({ branchId: sub.branchId, pause: !sub.isPaused })}
+                  >
+                    {sub.isPaused ? 'Reanudar' : 'Pausar'}
+                  </Btn>
+                  <Btn
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleEnter(sub)}
+                  >
+                    Entrar →
                   </Btn>
                 </div>
               </div>
@@ -563,7 +609,11 @@ export function SucursalesPage() {
         </div>
 
         {selectedBranchId !== null ? (
-          <SubscriptionDetail branchId={selectedBranchId} onClose={() => setSelectedBranchId(null)} />
+          <SubscriptionDetail
+            branchId={selectedBranchId}
+            initialTab={detailTab}
+            onClose={() => setSelectedBranchId(null)}
+          />
         ) : null}
       </section>
     );

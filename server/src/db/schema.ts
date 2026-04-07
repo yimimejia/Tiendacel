@@ -663,6 +663,7 @@ export const subscriptions = pgTable(
     paymentDay: integer('payment_day').notNull().default(1),
     nextDueDate: date('next_due_date').notNull(),
     notes: text('notes'),
+    isPaused: boolean('is_paused').notNull().default(false),
     ...timestamps,
   },
   (table) => [

@@ -3,7 +3,8 @@ import { db } from '../../db/client.js';
 import { branches, subscriptionPayments, subscriptions } from '../../db/schema.js';
 import { HttpError } from '../../utils/http-error.js';
 
-function getPaymentStatus(nextDueDateStr: string): 'rojo' | 'amarillo' | 'verde' {
+function getPaymentStatus(nextDueDateStr: string, isPaused: boolean): 'rojo' | 'amarillo' | 'verde' | 'pausado' {
+  if (isPaused) return 'pausado';
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const due = new Date(nextDueDateStr);
@@ -26,6 +27,7 @@ export async function listSubscriptions() {
       paymentDay: subscriptions.paymentDay,
       nextDueDate: subscriptions.nextDueDate,
       notes: subscriptions.notes,
+      isPaused: subscriptions.isPaused,
     })
     .from(branches)
     .leftJoin(subscriptions, eq(subscriptions.branchId, branches.id))
@@ -42,7 +44,8 @@ export async function listSubscriptions() {
     paymentDay: r.paymentDay ?? 1,
     nextDueDate: r.nextDueDate ?? null,
     notes: r.notes ?? null,
-    status: r.nextDueDate ? getPaymentStatus(r.nextDueDate) : ('sin_configurar' as const),
+    isPaused: r.isPaused ?? false,
+    status: r.nextDueDate ? getPaymentStatus(r.nextDueDate, r.isPaused ?? false) : ('sin_configurar' as const),
   }));
 }
 
@@ -56,6 +59,7 @@ export async function getSubscriptionByBranch(branchId: number) {
       paymentDay: subscriptions.paymentDay,
       nextDueDate: subscriptions.nextDueDate,
       notes: subscriptions.notes,
+      isPaused: subscriptions.isPaused,
     })
     .from(subscriptions)
     .innerJoin(branches, eq(subscriptions.branchId, branches.id))
@@ -63,7 +67,7 @@ export async function getSubscriptionByBranch(branchId: number) {
     .limit(1);
 
   if (!row) throw new HttpError(404, 'Suscripción no encontrada para esta sucursal');
-  return { ...row, status: getPaymentStatus(row.nextDueDate) };
+  return { ...row, status: getPaymentStatus(row.nextDueDate, row.isPaused) };
 }
 
 export async function getPaymentHistory(branchId: number) {
@@ -88,7 +92,7 @@ export async function createOrUpdateSubscription(input: {
   const [branch] = await db.select({ id: branches.id }).from(branches).where(eq(branches.id, input.branch_id)).limit(1);
   if (!branch) throw new HttpError(404, 'Sucursal no encontrada');
 
-  const [existing] = await db.select({ id: subscriptions.id }).from(subscriptions).where(eq(subscriptions.branchId, input.branch_id)).limit(1);
+  const [existing] = await db.select({ id: subscriptions.id, isPaused: subscriptions.isPaused }).from(subscriptions).where(eq(subscriptions.branchId, input.branch_id)).limit(1);
 
   if (existing) {
     const [updated] = await db
@@ -102,7 +106,7 @@ export async function createOrUpdateSubscription(input: {
       })
       .where(eq(subscriptions.id, existing.id))
       .returning();
-    return { ...updated, status: getPaymentStatus(updated.nextDueDate) };
+    return { ...updated, status: getPaymentStatus(updated.nextDueDate, updated.isPaused) };
   }
 
   const [created] = await db
@@ -116,7 +120,30 @@ export async function createOrUpdateSubscription(input: {
     })
     .returning();
 
-  return { ...created, status: getPaymentStatus(created.nextDueDate) };
+  return { ...created, status: getPaymentStatus(created.nextDueDate, created.isPaused) };
+}
+
+export async function pauseSubscription(branchId: number, pause: boolean) {
+  const [existing] = await db.select({ id: subscriptions.id }).from(subscriptions).where(eq(subscriptions.branchId, branchId)).limit(1);
+  if (!existing) throw new HttpError(404, 'Esta sucursal no tiene suscripción configurada');
+
+  const [updated] = await db
+    .update(subscriptions)
+    .set({ isPaused: pause, updatedAt: new Date() })
+    .where(eq(subscriptions.id, existing.id))
+    .returning();
+
+  return { ...updated, status: getPaymentStatus(updated.nextDueDate, updated.isPaused) };
+}
+
+export async function checkBranchPaused(branchId: number): Promise<{ isPaused: boolean }> {
+  const [row] = await db
+    .select({ isPaused: subscriptions.isPaused })
+    .from(subscriptions)
+    .where(eq(subscriptions.branchId, branchId))
+    .limit(1);
+
+  return { isPaused: row?.isPaused ?? false };
 }
 
 export async function recordPayment(input: {
