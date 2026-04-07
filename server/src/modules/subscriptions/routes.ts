@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middlewares/auth-middleware.js';
 import { roleMiddleware } from '../../middlewares/role-middleware.js';
+import { asyncHandler } from '../../utils/async-handler.js';
 import {
   deletePaymentController,
   getPaymentHistoryController,
@@ -14,11 +15,11 @@ const router = Router();
 
 router.use(authMiddleware, roleMiddleware(['admin_supremo']));
 
-router.get('/', listSubscriptionsController);
-router.get('/:branchId', getSubscriptionController);
-router.get('/:branchId/payments', getPaymentHistoryController);
-router.post('/:branchId', upsertSubscriptionController);
-router.post('/:branchId/payments', recordPaymentController);
-router.delete('/payments/:paymentId', deletePaymentController);
+router.get('/', asyncHandler(listSubscriptionsController));
+router.get('/:branchId', asyncHandler(getSubscriptionController));
+router.get('/:branchId/payments', asyncHandler(getPaymentHistoryController));
+router.post('/:branchId', asyncHandler(upsertSubscriptionController));
+router.post('/:branchId/payments', asyncHandler(recordPaymentController));
+router.delete('/payments/:paymentId', asyncHandler(deletePaymentController));
 
 export { router as subscriptionsRoutes };
