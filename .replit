@@ -1,0 +1,25 @@
+modules = ["nodejs-20"]
+[agent]
+expertMode = true
+
+[nix]
+channel = "stable-25_05"
+
+[userenv]
+
+[userenv.shared]
+NODE_ENV = "development"
+PORT = "4000"
+CORS_ORIGIN = "http://localhost:5000"
+FRONTEND_URL = "http://localhost:5000"
+APP_BASE_URL = "http://localhost:4000"
+UPLOAD_DIR = "uploads"
+MAX_UPLOAD_MB = "5"
+SERVE_FRONTEND = "false"
+FRONTEND_DIST_PATH = "client/dist"
+VITE_API_URL = "/api"
+VITE_APP_NAME = "Vibran Tech"
+VITE_PUBLIC_BASE_URL = "/"
+VITE_PORT = "5000"
+VITE_PREVIEW_PORT = "4173"
+JWT_SECRET = "e03328f85774c11e65cfa5f6b9958d5121092e5a996024ddde233d6411e3300c"

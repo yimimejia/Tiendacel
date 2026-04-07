@@ -1,0 +1,1 @@
+ALTER TABLE "customers" ADD COLUMN "alert_note" text;
