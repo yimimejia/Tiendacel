@@ -19,7 +19,10 @@ const envSchema = z.object({
   APP_BASE_URL: z.string().url().default('http://localhost:4000'),
   UPLOAD_DIR: z.string().default('uploads'),
   MAX_UPLOAD_MB: z.coerce.number().positive().default(5),
-  SERVE_FRONTEND: z.coerce.boolean().default(false),
+  SERVE_FRONTEND: z
+    .string()
+    .transform((v) => v === 'true' || v === '1')
+    .default('false'),
   FRONTEND_DIST_PATH: z.string().default('client/dist'),
 });
 
