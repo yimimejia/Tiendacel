@@ -21,6 +21,17 @@ export function setAccessToken(token: string | null) {
   localStorage.setItem('access_token', token);
 }
 
+async function safeParseResponse(response: Response) {
+  const raw = await response.text();
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<ApiResponse<T>> {
   const token = getAccessToken();
   const response = await fetch(`${API_URL}${path}`, {
@@ -33,11 +44,20 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<A
     },
   });
 
-  const payload = await response.json();
+  const payload = await safeParseResponse(response);
 
   if (!response.ok) {
-    throw new Error(payload.message ?? 'Error en solicitud al servidor');
+    const apiMessage = payload && typeof payload.message === 'string' ? payload.message : null;
+    throw new Error(apiMessage ?? `Error HTTP ${response.status}: ${response.statusText || 'Solicitud fallida'}`);
   }
 
-  return payload;
+  if (!payload) {
+    return {
+      success: true,
+      message: 'Operación completada correctamente',
+      data: null as T,
+    };
+  }
+
+  return payload as unknown as ApiResponse<T>;
 }
