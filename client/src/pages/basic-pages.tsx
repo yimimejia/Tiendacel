@@ -35,9 +35,9 @@ interface AssignableTech {
 
 function Table({ rows }: { rows: Record<string, unknown>[] }) {
   return (
-    <div className="overflow-x-auto rounded-xl border bg-white">
-      <table className="min-w-full text-sm">
-        <thead className="bg-slate-100">
+    <div className="vt-card overflow-x-auto">
+      <table className="min-w-full text-sm text-slate-700">
+        <thead className="bg-slate-50">
           <tr>
             <th className="px-3 py-2 text-left">ID</th>
             <th className="px-3 py-2 text-left">Nombre</th>
@@ -64,16 +64,17 @@ export function LoginPage() {
   const form = useForm<LoginInput>({ resolver: zodResolver(loginSchema) });
 
   return (
-    <section className="mx-auto mt-20 max-w-md rounded-xl border bg-white p-6 shadow-sm">
-      <h1 className="text-xl font-semibold">Iniciar sesión</h1>
+    <section className="mx-auto mt-16 max-w-md rounded-3xl border border-white/70 bg-white/80 p-8 shadow-xl backdrop-blur">
+      <h1 className="text-3xl font-bold tracking-tight text-slate-900">Iniciar sesión</h1>
+      <p className="mt-1 text-sm text-slate-500">Bienvenido de nuevo, accede a tu panel.</p>
       <form
         className="mt-4 space-y-3"
         onSubmit={form.handleSubmit((values) => loginMutation.mutate(values, { onSuccess: () => navigate('/dashboard') }))}
       >
-        <input className="w-full rounded border px-3 py-2" placeholder="Usuario o correo" {...form.register('username_or_email')} />
-        <input className="w-full rounded border px-3 py-2" type="password" placeholder="Contraseña" {...form.register('password')} />
+        <input className="vt-input" placeholder="Usuario o correo" {...form.register('username_or_email')} />
+        <input className="vt-input" type="password" placeholder="Contraseña" {...form.register('password')} />
         {loginMutation.error ? <ErrorState message={loginMutation.error.message} /> : null}
-        <button className="w-full rounded bg-blue-600 py-2 text-white" disabled={loginMutation.isPending}>
+        <button className="vt-btn-primary w-full py-2.5" disabled={loginMutation.isPending}>
           {loginMutation.isPending ? 'Ingresando...' : 'Ingresar'}
         </button>
       </form>
@@ -121,14 +122,14 @@ export function SucursalesPage() {
   if (list.error) return <ErrorState message={(list.error as Error).message} />;
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-5">
       <PanelTitulo titulo="Sucursales" descripcion="Alta y listado de sucursales." />
-      <form className="grid gap-2 rounded-xl border bg-white p-4 md:grid-cols-4" onSubmit={form.handleSubmit((v) => mutation.mutate(v))}>
-        <input className="rounded border px-2 py-1" placeholder="Nombre" {...form.register('name')} />
-        <input className="rounded border px-2 py-1" placeholder="Código" {...form.register('code')} />
-        <input className="rounded border px-2 py-1" placeholder="Dirección" {...form.register('address')} />
-        <input className="rounded border px-2 py-1" placeholder="Teléfono" {...form.register('phone')} />
-        <button className="rounded bg-slate-900 px-3 py-2 text-white md:col-span-4" disabled={mutation.isPending}>Crear sucursal</button>
+      <form className="grid gap-2 vt-card p-4 md:grid-cols-4" onSubmit={form.handleSubmit((v) => mutation.mutate(v))}>
+        <input className="vt-input" placeholder="Nombre" {...form.register('name')} />
+        <input className="vt-input" placeholder="Código" {...form.register('code')} />
+        <input className="vt-input" placeholder="Dirección" {...form.register('address')} />
+        <input className="vt-input" placeholder="Teléfono" {...form.register('phone')} />
+        <button className="vt-btn-primary md:col-span-4" disabled={mutation.isPending}>Crear sucursal</button>
       </form>
       {mutation.error ? <ErrorState message={(mutation.error as Error).message} /> : null}
       {(list.data ?? []).length === 0 ? <EmptyState message="No hay sucursales." /> : <Table rows={(list.data ?? []) as Record<string, unknown>[]} />}
@@ -170,21 +171,21 @@ export function ClientesPage() {
   if (list.error) return <ErrorState message={(list.error as Error).message} />;
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-5">
       <PanelTitulo titulo="Clientes" descripcion="Listado y creación de clientes." />
-      <form className="grid gap-2 rounded-xl border bg-white p-4 md:grid-cols-3" onSubmit={form.handleSubmit((v) => mutation.mutate(v))}>
-        <input className="rounded border px-2 py-1" placeholder="Nombre completo" {...form.register('full_name')} />
-        <input className="rounded border px-2 py-1" placeholder="Teléfono" {...form.register('phone')} />
-        <input className="rounded border px-2 py-1" placeholder="Correo (opcional)" {...form.register('email')} />
+      <form className="grid gap-2 vt-card p-4 md:grid-cols-3" onSubmit={form.handleSubmit((v) => mutation.mutate(v))}>
+        <input className="vt-input" placeholder="Nombre completo" {...form.register('full_name')} />
+        <input className="vt-input" placeholder="Teléfono" {...form.register('phone')} />
+        <input className="vt-input" placeholder="Correo (opcional)" {...form.register('email')} />
         {me.data?.role === 'administrador_general' ? (
-          <select className="rounded border px-2 py-1" {...form.register('branch_id', { valueAsNumber: true })}>
+          <select className="vt-input" {...form.register('branch_id', { valueAsNumber: true })}>
             <option value="">Selecciona sucursal</option>
             {(branches.data ?? []).map((branch) => (
               <option key={branch.id} value={branch.id}>{branch.name}</option>
             ))}
           </select>
         ) : null}
-        <button className="rounded bg-slate-900 px-3 py-2 text-white md:col-span-3" disabled={mutation.isPending}>Crear cliente</button>
+        <button className="vt-btn-primary md:col-span-3" disabled={mutation.isPending}>Crear cliente</button>
       </form>
       {mutation.error ? <ErrorState message={(mutation.error as Error).message} /> : null}
       {(list.data ?? []).length === 0 ? <EmptyState message="No hay clientes." /> : <Table rows={(list.data ?? []) as Record<string, unknown>[]} />}
@@ -209,7 +210,7 @@ export function ClienteDetallePage() {
   const quickMessage = `Hola ${customer.full_name}, te contactamos de Vibran Tech.`;
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-5">
       <PanelTitulo titulo={`Cliente #${id}`} descripcion="Detalle, alerta interna y acceso rápido a WhatsApp." />
       <div className="grid gap-4 md:grid-cols-2">
         <div className="rounded border bg-white p-4">
@@ -232,8 +233,8 @@ export function ClienteDetallePage() {
             Guardar alerta
           </button>
           <div className="mt-3 flex gap-2">
-            <a className="rounded border px-3 py-2 text-sm" href={`https://wa.me/${phoneDigits}?text=${encodeURIComponent(quickMessage)}`} target="_blank" rel="noreferrer">Abrir WhatsApp</a>
-            <button className="rounded border px-3 py-2 text-sm" onClick={() => navigator.clipboard.writeText(quickMessage)}>Copiar mensaje</button>
+            <a className="vt-btn-soft" href={`https://wa.me/${phoneDigits}?text=${encodeURIComponent(quickMessage)}`} target="_blank" rel="noreferrer">Abrir WhatsApp</a>
+            <button className="vt-btn-soft" onClick={() => navigator.clipboard.writeText(quickMessage)}>Copiar mensaje</button>
           </div>
         </div>
       </div>
@@ -269,13 +270,13 @@ export function ReparacionesPage() {
   const repairs = repairsQuery.data ?? [];
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-5">
       <PanelTitulo titulo="Reparaciones" descripcion="Asignación por técnico, trabajos sin asignar y toma de trabajo." />
       {repairs.length === 0 ? <EmptyState message="No hay reparaciones." /> : null}
       {repairs.length > 0 ? (
-        <div className="overflow-x-auto rounded-xl border bg-white">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-100">
+        <div className="vt-card overflow-x-auto">
+          <table className="min-w-full text-sm text-slate-700">
+            <thead className="bg-slate-50">
               <tr>
                 <th className="px-3 py-2 text-left">#</th>
                 <th className="px-3 py-2 text-left">Equipo</th>
@@ -300,7 +301,7 @@ export function ReparacionesPage() {
                   <td className="px-3 py-2 space-y-2">
                     {me.data?.role === 'tecnico' && repair.assignment_status === 'sin_asignar' ? (
                       <button
-                        className="rounded border px-2 py-1 text-xs hover:bg-slate-50"
+                        className="vt-btn-soft px-2 py-1 text-xs"
                         onClick={() => takeWorkMutation.mutate(repair.id)}
                         disabled={takeWorkMutation.isPending}
                       >
@@ -311,7 +312,7 @@ export function ReparacionesPage() {
                     {(me.data?.role === 'administrador_general' || me.data?.role === 'encargado_sucursal') ? (
                       <div className="flex flex-wrap gap-2">
                         <select
-                          className="rounded border px-2 py-1 text-xs"
+                          className="vt-input text-xs"
                           defaultValue={repair.technician_id ?? ''}
                           onChange={(e) => {
                             const value = e.target.value;
@@ -325,7 +326,7 @@ export function ReparacionesPage() {
                         </select>
                         {repair.technician_id ? (
                           <button
-                            className="rounded border px-2 py-1 text-xs hover:bg-slate-50"
+                            className="vt-btn-soft px-2 py-1 text-xs"
                             onClick={() => assignMutation.mutate({ repairId: repair.id, technician_id: null })}
                           >
                             Quitar asignación
@@ -366,7 +367,7 @@ export function ConfiguracionPage() {
   if (settingsQuery.error) return <ErrorState message={(settingsQuery.error as Error).message} />;
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-5">
       <PanelTitulo titulo="Configuración" descripcion="Ajustes globales del negocio." />
       {(settingsQuery.data ?? []).map((setting) => (
         <div key={setting.key} className="rounded border bg-white p-4">
@@ -374,7 +375,7 @@ export function ConfiguracionPage() {
           <p className="text-xs text-slate-500">{setting.description}</p>
           <input
             defaultValue={setting.value}
-            className="mt-2 w-full rounded border px-2 py-1"
+            className="vt-input mt-2"
             onBlur={(e) => saveMutation.mutate({ key: setting.key, value: e.target.value, description: setting.description ?? undefined })}
           />
         </div>

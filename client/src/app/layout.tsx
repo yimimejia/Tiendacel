@@ -32,60 +32,62 @@ export function AppLayout() {
   });
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900">
-      <div className="grid min-h-screen grid-cols-1 md:grid-cols-[260px_1fr]">
-        <aside className="border-r bg-white p-4">
-          <h1 className="text-xl font-semibold">{clientEnv.appName}</h1>
-          <p className="mt-1 text-xs text-slate-500">Panel administrativo</p>
-          <nav className="mt-6 flex flex-col gap-1">
+    <div className="min-h-screen text-slate-900">
+      <div className="grid min-h-screen grid-cols-1 md:grid-cols-[280px_1fr]">
+        <aside className="border-r border-white/60 bg-white/70 p-5 backdrop-blur-xl">
+          <h1 className="text-2xl font-bold tracking-tight text-indigo-700">{clientEnv.appName}</h1>
+          <p className="mt-1 text-xs text-slate-500">Panel administrativo moderno</p>
+          <nav className="mt-6 flex flex-col gap-1.5">
             {allowedMenu.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
-                  `rounded-lg px-3 py-2 text-sm ${isActive ? 'bg-blue-50 font-semibold text-blue-700' : 'hover:bg-slate-100'}`
+                  `rounded-xl px-3 py-2.5 text-sm transition ${isActive ? 'bg-indigo-600 font-semibold text-white shadow-sm' : 'text-slate-700 hover:bg-indigo-50'}`
                 }
               >
                 {item.label}
               </NavLink>
             ))}
-            <NavLink to="/consulta-reparacion" className="mt-2 rounded-lg border px-3 py-2 text-sm hover:bg-slate-50">
+            <NavLink to="/consulta-reparacion" className="mt-2 rounded-xl border border-indigo-100 bg-white px-3 py-2 text-sm text-indigo-700 hover:bg-indigo-50">
               Consulta pública
             </NavLink>
           </nav>
         </aside>
 
         <div>
-          <header className="flex flex-col gap-3 border-b bg-white px-6 py-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm font-semibold">{me?.full_name}</p>
-              <p className="text-xs text-slate-500">
-                Rol: {me?.role} {me?.branch_id ? `• Sucursal: ${me.branch_id}` : ''}
-              </p>
-            </div>
-            <div className="flex w-full max-w-xl flex-col gap-1 md:w-auto">
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Búsqueda global (cliente, reparación, producto, venta...)"
-                className="rounded-lg border px-3 py-2 text-sm"
-              />
-              {searchQuery.data ? (
+          <header className="sticky top-0 z-10 border-b border-white/60 bg-white/70 px-6 py-4 backdrop-blur-xl">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-semibold">{me?.full_name}</p>
                 <p className="text-xs text-slate-500">
-                  Resultados: {(searchQuery.data.customers?.length ?? 0) + (searchQuery.data.devices?.length ?? 0) + (searchQuery.data.products?.length ?? 0) + (searchQuery.data.sales?.length ?? 0)}
+                  Rol: {me?.role} {me?.branch_id ? `• Sucursal: ${me.branch_id}` : ''}
                 </p>
-              ) : null}
+              </div>
+              <div className="flex w-full max-w-xl flex-col gap-1 md:w-auto">
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Búsqueda global (cliente, reparación, producto, venta...)"
+                  className="vt-input"
+                />
+                {searchQuery.data ? (
+                  <p className="text-xs text-slate-500">
+                    Resultados: {(searchQuery.data.customers?.length ?? 0) + (searchQuery.data.devices?.length ?? 0) + (searchQuery.data.products?.length ?? 0) + (searchQuery.data.sales?.length ?? 0)}
+                  </p>
+                ) : null}
+              </div>
+              <button
+                onClick={() =>
+                  logoutMutation.mutate(undefined, {
+                    onSuccess: () => navigate('/login'),
+                  })
+                }
+                className="vt-btn-soft"
+              >
+                Cerrar sesión
+              </button>
             </div>
-            <button
-              onClick={() =>
-                logoutMutation.mutate(undefined, {
-                  onSuccess: () => navigate('/login'),
-                })
-              }
-              className="rounded-lg border px-3 py-2 text-sm hover:bg-slate-50"
-            >
-              Cerrar sesión
-            </button>
           </header>
 
           <main className="p-6">

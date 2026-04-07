@@ -2,6 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg-main: #f6f8ff;
+  --bg-soft: #eef2ff;
+  --text-main: #0f172a;
+}
+
 body {
+  margin: 0;
   font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  color: var(--text-main);
+  background:
+    radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.14), transparent 30%),
+    radial-gradient(circle at 85% 10%, rgba(56, 189, 248, 0.14), transparent 25%),
+    var(--bg-main);
+}
+
+@layer components {
+  .vt-card {
+    @apply rounded-2xl border border-white/60 bg-white/80 shadow-sm backdrop-blur;
+  }
+
+  .vt-input {
+    @apply w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100;
+  }
+
+  .vt-btn-primary {
+    @apply rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:opacity-95 disabled:opacity-60;
+  }
+
+  .vt-btn-soft {
+    @apply rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50;
+  }
 }
