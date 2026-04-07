@@ -162,22 +162,51 @@ const Select = forwardRef<HTMLSelectElement, { label?: string; error?: string; c
   }
 );
 
+function PhoneRepairLogo() {
+  return (
+    <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-20 h-20">
+      <circle cx="40" cy="40" r="40" fill="#4F46E5" />
+      <rect x="24" y="14" width="26" height="44" rx="4" fill="white" opacity="0.15" stroke="white" strokeWidth="2.5" />
+      <rect x="27" y="20" width="20" height="28" rx="2" fill="white" opacity="0.25" />
+      <circle cx="37" cy="53" r="2" fill="white" opacity="0.7" />
+      <line x1="33" y1="17" x2="41" y2="17" stroke="white" strokeWidth="2" strokeLinecap="round" opacity="0.6" />
+      <circle cx="55" cy="27" r="10" fill="#FBBF24" />
+      <path d="M52 24 L55 22 L58 24 L58 27 L55 30 L52 27 Z" fill="#78350F" opacity="0.3" />
+      <path d="M50.5 30.5 L53 28 L55 30 L57 28 L59.5 30.5" stroke="#1E1B4B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M55 22 L55 20" stroke="#1E1B4B" strokeWidth="2" strokeLinecap="round" />
+      <path d="M58.6 23.4 L60 22" stroke="#1E1B4B" strokeWidth="2" strokeLinecap="round" />
+      <path d="M60 27 L62 27" stroke="#1E1B4B" strokeWidth="2" strokeLinecap="round" />
+      <path d="M51.4 23.4 L50 22" stroke="#1E1B4B" strokeWidth="2" strokeLinecap="round" />
+      <path d="M50 27 L48 27" stroke="#1E1B4B" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="55" cy="27" r="2.5" fill="#1E1B4B" />
+      <path d="M33 34 L41 34" stroke="white" strokeWidth="1.5" strokeLinecap="round" opacity="0.5" />
+      <path d="M33 38 L39 38" stroke="white" strokeWidth="1.5" strokeLinecap="round" opacity="0.5" />
+      <path d="M33 42 L37 42" stroke="white" strokeWidth="1.5" strokeLinecap="round" opacity="0.5" />
+    </svg>
+  );
+}
+
 export function LoginPage() {
   const navigate = useNavigate();
   const loginMutation = useLogin();
   const form = useForm<LoginInput>({ resolver: zodResolver(loginSchema) });
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-100">
-      <section className="w-full max-w-sm">
-        <Card className="p-8">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-slate-100">
+      <section className="w-full max-w-sm px-4">
+        <div className="text-center mb-6">
+          <div className="flex justify-center mb-4">
+            <PhoneRepairLogo />
+          </div>
           <h1 className="text-2xl font-bold text-slate-900">Iniciar sesión</h1>
-          <p className="mt-1 text-sm text-slate-500">Ingresa con tu usuario y contraseña.</p>
-          <form className="mt-5 space-y-3" onSubmit={form.handleSubmit((v) => loginMutation.mutate(v, { onSuccess: () => navigate('/dashboard') }))}>
+          <p className="mt-1 text-sm text-slate-500">Accede a tu panel de gestión</p>
+        </div>
+        <Card className="p-6">
+          <form className="space-y-4" onSubmit={form.handleSubmit((v) => loginMutation.mutate(v, { onSuccess: () => navigate('/dashboard') }))}>
             <Input label="Usuario o correo" placeholder="usuario" {...form.register('username_or_email')} />
-            <Input label="Contraseña" type="password" placeholder="contraseña" {...form.register('password')} />
+            <Input label="Contraseña" type="password" placeholder="••••••••" {...form.register('password')} />
             {loginMutation.error ? <ErrorState message={loginMutation.error.message} /> : null}
-            <Btn type="submit" disabled={loginMutation.isPending} className="w-full">
+            <Btn type="submit" disabled={loginMutation.isPending} className="w-full mt-1">
               {loginMutation.isPending ? 'Ingresando...' : 'Ingresar'}
             </Btn>
           </form>
