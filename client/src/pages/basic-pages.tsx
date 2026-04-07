@@ -64,10 +64,11 @@ export function LoginPage() {
   const form = useForm<LoginInput>({ resolver: zodResolver(loginSchema) });
 
   return (
-    <section className="mx-auto mt-16 max-w-md rounded-3xl border border-white/70 bg-white/80 p-8 shadow-xl backdrop-blur">
-      <h1 className="text-3xl font-bold tracking-tight text-slate-900">Iniciar sesión</h1>
-      <p className="mt-1 text-sm text-slate-500">Bienvenido de nuevo, accede a tu panel.</p>
-      <form
+    <section className="mx-auto flex min-h-screen w-full max-w-md items-center rounded-3xl border border-white/70 bg-white/80 p-8 shadow-xl backdrop-blur">
+      <div className="w-full">
+        <h1 className="text-3xl font-bold tracking-tight text-slate-900">Iniciar sesión</h1>
+        <p className="mt-1 text-sm text-slate-500">Bienvenido de nuevo, accede a tu panel.</p>
+        <form
         className="mt-4 space-y-3"
         onSubmit={form.handleSubmit((values) => loginMutation.mutate(values, { onSuccess: () => navigate('/dashboard') }))}
       >
@@ -77,7 +78,8 @@ export function LoginPage() {
         <button className="vt-btn-primary w-full py-2.5" disabled={loginMutation.isPending}>
           {loginMutation.isPending ? 'Ingresando...' : 'Ingresar'}
         </button>
-      </form>
+        </form>
+      </div>
     </section>
   );
 }
