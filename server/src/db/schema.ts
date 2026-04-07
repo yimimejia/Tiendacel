@@ -653,3 +653,51 @@ export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
   user: one(users, { fields: [auditLogs.userId], references: [users.id] }),
   branch: one(branches, { fields: [auditLogs.branchId], references: [branches.id] }),
 }));
+
+export const subscriptions = pgTable(
+  'subscriptions',
+  {
+    id: serial('id').primaryKey(),
+    branchId: integer('branch_id').notNull().unique().references(() => branches.id),
+    monthlyFee: numeric('monthly_fee', { precision: 10, scale: 2 }).notNull().default('50.00'),
+    paymentDay: integer('payment_day').notNull().default(1),
+    nextDueDate: date('next_due_date').notNull(),
+    notes: text('notes'),
+    ...timestamps,
+  },
+  (table) => [
+    index('idx_subscriptions_branch_id').on(table.branchId),
+    index('idx_subscriptions_next_due_date').on(table.nextDueDate),
+  ],
+);
+
+export const subscriptionPayments = pgTable(
+  'subscription_payments',
+  {
+    id: serial('id').primaryKey(),
+    subscriptionId: integer('subscription_id').notNull().references(() => subscriptions.id),
+    branchId: integer('branch_id').notNull().references(() => branches.id),
+    amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
+    paidAt: timestamp('paid_at', { withTimezone: true }).notNull().defaultNow(),
+    paymentMethod: paymentMethodEnum('payment_method').notNull().default('efectivo'),
+    note: text('note'),
+    recordedByUserId: integer('recorded_by_user_id').references(() => users.id),
+    ...timestamps,
+  },
+  (table) => [
+    index('idx_sub_payments_subscription_id').on(table.subscriptionId),
+    index('idx_sub_payments_branch_id').on(table.branchId),
+    index('idx_sub_payments_paid_at').on(table.paidAt),
+  ],
+);
+
+export const subscriptionsRelations = relations(subscriptions, ({ one, many }) => ({
+  branch: one(branches, { fields: [subscriptions.branchId], references: [branches.id] }),
+  payments: many(subscriptionPayments),
+}));
+
+export const subscriptionPaymentsRelations = relations(subscriptionPayments, ({ one }) => ({
+  subscription: one(subscriptions, { fields: [subscriptionPayments.subscriptionId], references: [subscriptions.id] }),
+  branch: one(branches, { fields: [subscriptionPayments.branchId], references: [branches.id] }),
+  recordedBy: one(users, { fields: [subscriptionPayments.recordedByUserId], references: [users.id] }),
+}));

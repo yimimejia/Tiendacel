@@ -19,7 +19,7 @@ router.get('/:id', authMiddleware, validateRequest({ params: branchIdParamSchema
 router.post(
   '/',
   authMiddleware,
-  roleMiddleware(['administrador_general']),
+  roleMiddleware(['administrador_general', 'admin_supremo']),
   validateRequest({ body: createBranchSchema }),
   createBranchController,
 );
@@ -27,7 +27,7 @@ router.post(
 router.patch(
   '/:id',
   authMiddleware,
-  roleMiddleware(['administrador_general']),
+  roleMiddleware(['administrador_general', 'admin_supremo']),
   validateRequest({ params: branchIdParamSchema, body: updateBranchSchema }),
   updateBranchController,
 );
@@ -35,7 +35,7 @@ router.patch(
 router.patch(
   '/:id/toggle-status',
   authMiddleware,
-  roleMiddleware(['administrador_general']),
+  roleMiddleware(['administrador_general', 'admin_supremo']),
   validateRequest({ params: branchIdParamSchema, body: toggleBranchSchema }),
   toggleBranchStatusController,
 );

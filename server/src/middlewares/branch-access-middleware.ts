@@ -1,8 +1,10 @@
 import type { NextFunction, Request, Response } from 'express';
 import { HttpError } from '../utils/http-error.js';
 
+const UNRESTRICTED_ROLES = ['admin_supremo', 'administrador_general'];
+
 export function assertBranchAccess(userRole: string, userBranchId: string | null, targetBranchId: number | null) {
-  if (userRole === 'administrador_general') return;
+  if (UNRESTRICTED_ROLES.includes(userRole)) return;
 
   if (!targetBranchId) {
     throw new HttpError(403, 'El recurso no tiene sucursal asociada');

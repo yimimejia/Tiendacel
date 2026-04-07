@@ -4,8 +4,11 @@ import { assertBranchAccess } from '../../middlewares/branch-access-middleware.j
 import { sendList, sendSuccess } from '../../utils/api-response.js';
 import { createBranch, getBranchById, listBranches, toggleBranchStatus, updateBranch } from './service.js';
 
+const UNRESTRICTED_ROLES = ['admin_supremo', 'administrador_general'];
+
 export async function listBranchesController(req: Request, res: Response) {
-  const forcedBranchId = req.user?.role === 'administrador_general' ? null : Number(req.user?.branchId ?? 0);
+  const role = req.user?.role ?? '';
+  const forcedBranchId = UNRESTRICTED_ROLES.includes(role) ? null : Number(req.user?.branchId ?? 0);
   const result = await listBranches(req.query, forcedBranchId);
   return sendList(res, result.data, result.meta, 'Sucursales obtenidas correctamente');
 }

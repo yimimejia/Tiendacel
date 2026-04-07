@@ -14,7 +14,7 @@ import { createUserSchema, resetPasswordSchema, toggleUserSchema, updateUserSche
 
 const router = Router();
 
-router.use(authMiddleware, roleMiddleware(['administrador_general']));
+router.use(authMiddleware, roleMiddleware(['administrador_general', 'admin_supremo']));
 
 router.get('/', listUsersController);
 router.post('/', validateRequest({ body: createUserSchema }), createUserController);

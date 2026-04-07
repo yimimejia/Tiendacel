@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { eq } from 'drizzle-orm';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
-import { roles, users } from '../../db/schema.js';
+import { branches, roles, users } from '../../db/schema.js';
 import { HttpError } from '../../utils/http-error.js';
 
 export async function login(usernameOrEmail: string, password: string) {
@@ -14,11 +14,13 @@ export async function login(usernameOrEmail: string, password: string) {
       usernameOrEmail: users.usernameOrEmail,
       passwordHash: users.passwordHash,
       branchId: users.branchId,
+      branchName: branches.name,
       isActive: users.isActive,
       role: roles.name,
     })
     .from(users)
     .innerJoin(roles, eq(users.roleId, roles.id))
+    .leftJoin(branches, eq(users.branchId, branches.id))
     .where(eq(users.usernameOrEmail, usernameOrEmail))
     .limit(1);
 
@@ -37,6 +39,7 @@ export async function login(usernameOrEmail: string, password: string) {
       full_name: record.fullName,
       role: record.role,
       branch_id: record.branchId,
+      branch_name: record.branchName ?? null,
       username_or_email: record.usernameOrEmail,
     },
   };
@@ -49,11 +52,13 @@ export async function getMe(userId: number) {
       fullName: users.fullName,
       usernameOrEmail: users.usernameOrEmail,
       branchId: users.branchId,
+      branchName: branches.name,
       role: roles.name,
       isActive: users.isActive,
     })
     .from(users)
     .innerJoin(roles, eq(users.roleId, roles.id))
+    .leftJoin(branches, eq(users.branchId, branches.id))
     .where(eq(users.id, userId))
     .limit(1);
 
@@ -64,6 +69,7 @@ export async function getMe(userId: number) {
     full_name: record.fullName,
     role: record.role,
     branch_id: record.branchId,
+    branch_name: record.branchName ?? null,
     username_or_email: record.usernameOrEmail,
   };
 }

@@ -90,12 +90,14 @@ export async function getUserById(id: number) {
   return sanitizeUser(row);
 }
 
+const GLOBAL_ROLES = ['administrador_general', 'admin_supremo'];
+
 async function validateRoleAndBranch(roleId: number, branchId: number | null | undefined) {
   const [role] = await db.select().from(roles).where(eq(roles.id, roleId)).limit(1);
   if (!role) throw new HttpError(400, 'role_id inválido');
 
-  if (role.name !== 'administrador_general' && !branchId) {
-    throw new HttpError(400, 'branch_id es requerido para roles distintos a administrador_general');
+  if (!GLOBAL_ROLES.includes(role.name) && !branchId) {
+    throw new HttpError(400, 'branch_id es requerido para este rol');
   }
 }
 
