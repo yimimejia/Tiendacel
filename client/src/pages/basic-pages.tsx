@@ -1128,54 +1128,122 @@ function Pendiente({ titulo }: { titulo: string }) {
 
 export const NuevaReparacionPage = () => <Pendiente titulo="Nueva reparación" />;
 export function InventarioPage() {
-  const [items, setItems] = useState<Array<{ id: number; name: string; cost: number; price: number; stock: number }>>([]);
-  const form = useForm<{ name: string; cost: number; price: number; stock: number }>({
+  const [items, setItems] = useState<Array<{ id: number; name: string; cost: number; price: number; stock: number; photo?: string }>>([]);
+  const [search, setSearch] = useState('');
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const form = useForm<{ name: string; cost: number; price: number; stock: number; photo_file?: FileList }>({
     defaultValues: { name: '', cost: 0, price: 0, stock: 1 },
   });
 
-  const onSubmit = form.handleSubmit((v) => {
-    setItems((prev) => [...prev, { id: Date.now(), ...v }]);
+  const onSubmit = form.handleSubmit(async (v) => {
+    if (!v.name?.trim()) {
+      setFormError('El nombre del producto es obligatorio.');
+      return;
+    }
+    if (v.cost <= 0 || v.price <= 0 || v.stock < 0) {
+      setFormError('Costo y precio deben ser mayor a 0. Stock no puede ser negativo.');
+      return;
+    }
+
+    let photo: string | undefined;
+    const file = v.photo_file?.[0];
+    if (file) {
+      photo = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    const payload = { id: editingId ?? Date.now(), name: v.name.trim(), cost: v.cost, price: v.price, stock: v.stock, photo };
+    if (editingId) {
+      setItems((prev) => prev.map((it) => (it.id === editingId ? payload : it)));
+    } else {
+      setItems((prev) => [...prev, payload]);
+    }
+    setEditingId(null);
+    setFormError(null);
     form.reset({ name: '', cost: 0, price: 0, stock: 1 });
   });
 
+  const filteredItems = items.filter((item) => item.name.toLowerCase().includes(search.toLowerCase()));
+
   return (
     <section className="space-y-5">
-      <PanelTitulo titulo="Inventario" descripcion="Registra productos con costo, precio y ganancia." />
+      <PanelTitulo titulo="Inventario" descripcion="Catálogo completo con fotos, acciones y vista tipo tienda." />
       <Card className="p-5">
         <form className="grid gap-3 md:grid-cols-4" onSubmit={onSubmit}>
           <Input label="Producto" {...form.register('name')} />
           <Input label="Costo" type="number" step="0.01" {...form.register('cost', { valueAsNumber: true })} />
           <Input label="Precio venta" type="number" step="0.01" {...form.register('price', { valueAsNumber: true })} />
           <Input label="Stock" type="number" {...form.register('stock', { valueAsNumber: true })} />
+          <Input label="Foto del producto" type="file" accept="image/*" className="md:col-span-2" {...form.register('photo_file')} />
+          {formError ? <p className="text-sm text-red-600 md:col-span-4">{formError}</p> : null}
           <div className="md:col-span-4">
-            <Btn type="submit">Agregar al inventario</Btn>
+            <Btn type="submit">{editingId ? 'Guardar cambios' : 'Agregar al inventario'}</Btn>
           </div>
         </form>
       </Card>
+      <Card className="p-5">
+        <Input label="Buscar producto" placeholder="Busca por nombre..." value={search} onChange={(e) => setSearch(e.target.value)} />
+      </Card>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {filteredItems.map((item) => (
+          <Card key={item.id} className="overflow-hidden">
+            <div className="h-48 bg-slate-100 flex items-center justify-center">
+              {item.photo ? <img src={item.photo} alt={item.name} className="h-full w-full object-cover" /> : <span className="text-slate-400 text-sm">Sin foto</span>}
+            </div>
+            <div className="p-4 space-y-2">
+              <p className="font-semibold">{item.name}</p>
+              <p className="text-sm text-slate-500">Stock: {item.stock}</p>
+              <p className="text-sm">Costo: <strong>RD$ {item.cost.toFixed(2)}</strong></p>
+              <p className="text-sm">Precio: <strong>RD$ {item.price.toFixed(2)}</strong></p>
+              <p className="text-sm text-emerald-700">Ganancia: RD$ {(item.price - item.cost).toFixed(2)}</p>
+              <div className="flex gap-2 pt-2">
+                <Btn
+                  size="sm"
+                  variant="soft"
+                  onClick={() => {
+                    setEditingId(item.id);
+                    form.reset({ name: item.name, cost: item.cost, price: item.price, stock: item.stock });
+                    setFormError(null);
+                  }}
+                >
+                  Editar
+                </Btn>
+                <Btn size="sm" variant="danger" onClick={() => setItems((prev) => prev.filter((it) => it.id !== item.id))}>Eliminar</Btn>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
       <Card className="p-5 overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-slate-500">
-              <th className="pb-2">Producto</th>
-              <th className="pb-2">Costo</th>
-              <th className="pb-2">Precio</th>
-              <th className="pb-2">Ganancia</th>
-              <th className="pb-2">Stock</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item) => (
-              <tr key={item.id} className="border-t border-slate-100">
-                <td className="py-2">{item.name}</td>
-                <td className="py-2">RD$ {item.cost.toFixed(2)}</td>
-                <td className="py-2">RD$ {item.price.toFixed(2)}</td>
-                <td className="py-2 text-emerald-700 font-medium">RD$ {(item.price - item.cost).toFixed(2)}</td>
-                <td className="py-2">{item.stock}</td>
+        <h3 className="font-semibold mb-2">Resumen tabular</h3>
+        {filteredItems.length === 0 ? <p className="text-sm text-slate-400">No hay productos registrados.</p> : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-slate-500">
+                <th className="pb-2">Producto</th>
+                <th className="pb-2">Costo</th>
+                <th className="pb-2">Precio</th>
+                <th className="pb-2">Ganancia</th>
+                <th className="pb-2">Stock</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        {items.length === 0 ? <p className="text-sm text-slate-400 mt-3">Aún no hay productos registrados.</p> : null}
+            </thead>
+            <tbody>
+              {filteredItems.map((item) => (
+                <tr key={item.id} className="border-t border-slate-100">
+                  <td className="py-2">{item.name}</td>
+                  <td className="py-2">RD$ {item.cost.toFixed(2)}</td>
+                  <td className="py-2">RD$ {item.price.toFixed(2)}</td>
+                  <td className="py-2 text-emerald-700 font-medium">RD$ {(item.price - item.cost).toFixed(2)}</td>
+                  <td className="py-2">{item.stock}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </Card>
     </section>
   );
