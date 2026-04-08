@@ -1426,10 +1426,22 @@ export function VentasPage() {
   const subtotal = cart.reduce((acc, item) => acc + item.qty * item.price, 0);
   const mixedRemaining = Math.max(0, subtotal - cashAmount);
   const ncfMap: Record<string, string> = {
-    'Consumidor final': branchSettingsQuery.data?.feature_flags?.ncf?.consumidor_final?.current ?? 'B02-',
-    'Crédito fiscal': branchSettingsQuery.data?.feature_flags?.ncf?.credito_fiscal?.current ?? 'B01-',
-    Gubernamental: branchSettingsQuery.data?.feature_flags?.ncf?.gubernamental?.current ?? 'B15-',
-    'Régimen especial': branchSettingsQuery.data?.feature_flags?.ncf?.regimen_especial?.current ?? 'B14-',
+    'Consumidor final':
+      branchSettingsQuery.data?.feature_flags?.ncf?.consumidor_final?.current ??
+      branchSettingsQuery.data?.feature_flags?.ncf?.consumidor_final?.range_start ??
+      'B02-',
+    'Crédito fiscal':
+      branchSettingsQuery.data?.feature_flags?.ncf?.credito_fiscal?.current ??
+      branchSettingsQuery.data?.feature_flags?.ncf?.credito_fiscal?.range_start ??
+      'B01-',
+    Gubernamental:
+      branchSettingsQuery.data?.feature_flags?.ncf?.gubernamental?.current ??
+      branchSettingsQuery.data?.feature_flags?.ncf?.gubernamental?.range_start ??
+      'B15-',
+    'Régimen especial':
+      branchSettingsQuery.data?.feature_flags?.ncf?.regimen_especial?.current ??
+      branchSettingsQuery.data?.feature_flags?.ncf?.regimen_especial?.range_start ??
+      'B14-',
   };
   const visibleProducts = inventoryItems.filter((item) => item.name.toLowerCase().includes(productSearch.toLowerCase()));
 
