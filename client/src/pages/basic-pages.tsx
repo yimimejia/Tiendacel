@@ -14,7 +14,6 @@ import { apiRequest } from '@/lib/api';
 const loginSchema = z.object({
   username_or_email: z.string().min(1),
   password: z.string().min(1),
-  branch_code: z.string().optional(),
 });
 type LoginInput = z.infer<typeof loginSchema>;
 
@@ -221,7 +220,6 @@ export function LoginPage() {
           }))}>
             <Input label="Usuario o correo" placeholder="usuario" {...form.register('username_or_email')} />
             <Input label="Contraseña" type="password" placeholder="••••••••" {...form.register('password')} />
-            <Input label="Código sucursal (opcional)" placeholder="SUC-001" {...form.register('branch_code')} />
             {loginMutation.error ? <ErrorState message={loginMutation.error.message} /> : null}
             <Btn type="submit" disabled={loginMutation.isPending} className="w-full mt-1">
               {loginMutation.isPending ? 'Ingresando...' : 'Ingresar'}

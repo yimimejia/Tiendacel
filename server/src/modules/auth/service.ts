@@ -1,12 +1,12 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { branches, roles, users } from '../../db/schema.js';
 import { HttpError } from '../../utils/http-error.js';
 
-export async function login(usernameOrEmail: string, password: string, branchCode?: string) {
+export async function login(usernameOrEmail: string, password: string) {
   const baseQuery = db
     .select({
       id: users.id,
@@ -22,16 +22,9 @@ export async function login(usernameOrEmail: string, password: string, branchCod
     .innerJoin(roles, eq(users.roleId, roles.id))
     .leftJoin(branches, eq(users.branchId, branches.id));
 
-  const records = await baseQuery.where(
-    branchCode
-      ? and(eq(users.usernameOrEmail, usernameOrEmail), eq(branches.code, branchCode))
-      : eq(users.usernameOrEmail, usernameOrEmail),
-  );
+  const records = await baseQuery.where(eq(users.usernameOrEmail, usernameOrEmail));
 
   if (!records.length) throw new HttpError(401, 'Credenciales inválidas');
-  if (records.length > 1 && !branchCode) {
-    throw new HttpError(409, 'Este usuario existe en varias sucursales. Indica el código de sucursal para continuar.');
-  }
   const [record] = records;
   if (!record.isActive) throw new HttpError(403, 'Usuario inactivo');
 
