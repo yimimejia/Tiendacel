@@ -1419,28 +1419,20 @@ export function VentasPage() {
   const repairOrderCode = `${(selectedBrand || 'EQ').slice(0, 2).toUpperCase()}-${String(orderSequence).padStart(6, '0')}`;
   const isPresetBrand = selectedBrand && selectedBrand in DEVICE_MODELS_BY_BRAND;
   const modelsForBrand = isPresetBrand ? DEVICE_MODELS_BY_BRAND[selectedBrand] : [];
-  const invoiceNumber = (() => {
-    const settings = branchSettingsQuery.data?.feature_flags?.ncf?.[(() => {
-      if (comprobanteType === 'Crédito fiscal') return 'credito_fiscal';
-      if (comprobanteType === 'Gubernamental') return 'gubernamental';
-      if (comprobanteType === 'Régimen especial') return 'regimen_especial';
-      return 'consumidor_final';
-    })()];
+  const ncfKey = comprobanteType === 'Crédito fiscal'
+    ? 'credito_fiscal'
+    : comprobanteType === 'Gubernamental'
+      ? 'gubernamental'
+      : comprobanteType === 'Régimen especial'
+        ? 'regimen_especial'
+        : 'consumidor_final';
+  const currentNcf = (() => {
+    const settings = branchSettingsQuery.data?.feature_flags?.ncf?.[ncfKey];
     const start = String(settings?.current ?? settings?.range_start ?? '');
     const end = String(settings?.range_end ?? '');
     if (!start && !end) return `FAC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
     if (start && end) return `${start} - ${end}`;
     return start || end || `FAC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
-  })();
-  const currentNcf = (() => {
-    const settings = branchSettingsQuery.data?.feature_flags?.ncf?.[(() => {
-      if (comprobanteType === 'Crédito fiscal') return 'credito_fiscal';
-      if (comprobanteType === 'Gubernamental') return 'gubernamental';
-      if (comprobanteType === 'Régimen especial') return 'regimen_especial';
-      return 'consumidor_final';
-    })()];
-    const start = String(settings?.current ?? settings?.range_start ?? '');
-    return start || `FAC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
   })();
 
   useEffect(() => {
@@ -1452,9 +1444,10 @@ export function VentasPage() {
     } catch {}
   }, []);
 
-  const subtotalBruto = cart.reduce((acc, item) => acc + item.total_linea, 0);
-  const subtotalNeto = cart.reduce((acc, item) => acc + item.subtotal, 0);
-  const itbisTotal = cart.reduce((acc, item) => acc + item.itbis_monto, 0);
+  const ITBIS_RATE = 0.18;
+  const subtotalBruto = cart.reduce((acc, item) => acc + Number(item.total_linea ?? 0), 0);
+  const subtotalNeto = cart.reduce((acc, item) => acc + Number(item.subtotal ?? 0), 0);
+  const itbisTotal = cart.reduce((acc, item) => acc + Number(item.itbis_monto ?? 0), 0);
   const totalVenta = subtotalBruto;
   const mixedRemaining = Math.max(0, totalVenta - cashAmount);
   const ncfMap: Record<string, string> = {
@@ -1559,8 +1552,11 @@ export function VentasPage() {
       return;
     }
     const settings = branchSettingsQuery.data ?? {};
-    const ncfLabel = currentNcf || ncfMap[comprobanteType] || invoiceNumber;
+    const ncfLabel = currentNcf || ncfMap[comprobanteType];
     const negocio = settings.business_name || settings.fiscal_name || me.data?.branch_name || 'Mi Negocio';
+    const subtotalNeto = cart.reduce((acc, line) => acc + Number(line.subtotal ?? line.precio_unitario * line.cantidad), 0);
+    const itbisTotal = cart.reduce((acc, line) => acc + Number(line.itbis_monto ?? 0), 0);
+    const totalVenta = cart.reduce((acc, line) => acc + Number(line.total_linea ?? line.precio_unitario * line.cantidad), 0);
     const invoiceHtml = `
       <html>
         <head>
@@ -1592,7 +1588,7 @@ export function VentasPage() {
           <div class="divider"></div>
           <table>
             <tr><th>Cant.</th><th>Precio</th><th>ITBIS</th><th style="text-align:right">Total</th></tr>
-            ${cart.map((item) => `<tr><td>${item.cantidad} ${item.nombre}</td><td>RD$ ${item.precio_unitario.toFixed(2)}</td><td>RD$ ${item.itbis_monto.toFixed(2)}</td><td style="text-align:right">RD$ ${item.total_linea.toFixed(2)}</td></tr>`).join('')}
+            ${cart.map((item) => `<tr><td>${item.cantidad} ${item.nombre}</td><td>RD$ ${Number(item.precio_unitario ?? 0).toFixed(2)}</td><td>RD$ ${Number(item.itbis_monto ?? 0).toFixed(2)}</td><td style="text-align:right">RD$ ${Number(item.total_linea ?? 0).toFixed(2)}</td></tr>`).join('')}
           </table>
           <div class="divider"></div>
           <div class="row"><span>Subtotal (sin ITBIS)</span><strong>RD$ ${subtotalNeto.toFixed(2)}</strong></div>
@@ -1610,9 +1606,7 @@ export function VentasPage() {
     printWindow.document.write(invoiceHtml);
     printWindow.document.close();
     printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-    }, 350);
+    setTimeout(() => printWindow.print(), 350);
   };
 
   return (
@@ -1684,9 +1678,9 @@ export function VentasPage() {
                       value={line.cantidad}
                       onChange={(e) => updateLineQty(line.id, Number(e.target.value))}
                     />
-                    <span className="text-xs">Unit: RD$ {line.precio_unitario.toFixed(2)}</span>
+                    <span className="text-xs">Unit: RD$ {Number(line.precio_unitario ?? 0).toFixed(2)}</span>
                   </div>
-                  <p className="text-xs">ITBIS: RD$ {line.itbis_monto.toFixed(2)} · Total línea: RD$ {line.total_linea.toFixed(2)}</p>
+                  <p className="text-xs">ITBIS: RD$ {Number(line.itbis_monto ?? 0).toFixed(2)} · Total línea: RD$ {Number(line.total_linea ?? 0).toFixed(2)}</p>
                 </div>
               ))}
             </div>
