@@ -187,7 +187,7 @@ const Input = forwardRef<HTMLInputElement, { label?: string; error?: string; cla
     return (
       <div className={`flex flex-col gap-1 ${className}`}>
         {label ? <label className="text-xs font-medium text-slate-600">{label}</label> : null}
-        <input ref={ref} className="vt-input" {...props} />
+        <input ref={ref} className="vt-input ml-[0px] mr-[0px] pt-[8px] pb-[8px] mt-[-15px] mb-[-15px]" {...props} />
         {error ? <p className="text-xs text-red-500">{error}</p> : null}
       </div>
     );
@@ -199,7 +199,7 @@ const Select = forwardRef<HTMLSelectElement, { label?: string; error?: string; c
     return (
       <div className={`flex flex-col gap-1 ${className}`}>
         {label ? <label className="text-xs font-medium text-slate-600">{label}</label> : null}
-        <select ref={ref} className="vt-input" {...props}>{children}</select>
+        <select ref={ref} className="vt-input ml-[0px] mr-[0px] pt-[8px] pb-[8px] mt-[-15px] mb-[-15px]" {...props}>{children}</select>
         {error ? <p className="text-xs text-red-500">{error}</p> : null}
       </div>
     );
