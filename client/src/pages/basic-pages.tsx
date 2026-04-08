@@ -85,6 +85,7 @@ interface SubscriptionRow {
   paymentDay: number;
   nextDueDate: string;
   notes: string | null;
+  assignedAdmins?: string[];
   isPaused: boolean;
   status: 'rojo' | 'amarillo' | 'verde' | 'pausado';
 }
@@ -570,6 +571,7 @@ export function SucursalesPage() {
     onSuccess: () => {
       setAssignBranchId(null);
       setAssignUserId(null);
+      queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
     },
   });
 
@@ -647,6 +649,10 @@ export function SucursalesPage() {
                     <p className="font-medium">${Number(sub.monthlyFee).toFixed(2)}</p>
                   </div>
                 </div>
+                <p className="text-xs text-slate-600">
+                  <span className="font-medium">Admin general:</span>{' '}
+                  {(sub.assignedAdmins?.length ?? 0) > 0 ? sub.assignedAdmins?.join(', ') : 'Sin asignar'}
+                </p>
                 <div className="flex flex-wrap gap-1.5 pt-1 border-t border-black/5">
                   <Btn
                     size="sm"
