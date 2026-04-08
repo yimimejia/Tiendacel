@@ -50,7 +50,6 @@ const TECNICO_MENU: MenuItem[] = [
 ];
 
 const CAJA_MENU: MenuItem[] = [
-  { to: '/dashboard', label: 'Dashboard' },
   { to: '/ventas', label: 'Ventas' },
   { to: '/clientes', label: 'Clientes' },
 ];

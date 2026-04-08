@@ -211,7 +211,7 @@ export function LoginPage() {
           <form className="space-y-4" onSubmit={form.handleSubmit((v) => loginMutation.mutate(v, {
             onSuccess: (data) => {
               const role = data.user.role;
-              if (['administrador_general', 'caja_ventas'].includes(role)) {
+              if (role === 'caja_ventas') {
                 navigate('/ventas');
                 return;
               }
@@ -289,13 +289,23 @@ export function DashboardPage() {
 
   return (
     <section className="space-y-5">
-      <PanelTitulo titulo="Dashboard" descripcion="Resumen general." />
+      <PanelTitulo
+        titulo="Dashboard"
+        descripcion={role === 'caja_ventas' ? 'Resumen de operación de caja.' : 'Resumen general.'}
+      />
       {branches.isLoading || customers.isLoading ? <LoadingState /> : (
         <div className="grid gap-4 md:grid-cols-2">
-          <Card className="p-5">
-            <p className="text-sm text-slate-500">Sucursales visibles</p>
-            <p className="text-3xl font-bold text-slate-900">{branches.data?.length ?? 0}</p>
-          </Card>
+          {role !== 'caja_ventas' ? (
+            <Card className="p-5">
+              <p className="text-sm text-slate-500">Sucursales visibles</p>
+              <p className="text-3xl font-bold text-slate-900">{branches.data?.length ?? 0}</p>
+            </Card>
+          ) : (
+            <Card className="p-5">
+              <p className="text-sm text-slate-500">Caja / Ventas</p>
+              <p className="text-lg font-semibold text-slate-900">Sin acceso al panel de sucursales</p>
+            </Card>
+          )}
           <Card className="p-5">
             <p className="text-sm text-slate-500">Clientes</p>
             <p className="text-3xl font-bold text-slate-900">{customers.data?.length ?? 0}</p>
