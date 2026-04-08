@@ -5,9 +5,9 @@ import { HttpError } from '../../utils/http-error.js';
 import { getBranchSettings, upsertBranchSettings } from './service.js';
 
 function resolveBranchId(req: Request) {
-  if (req.user?.role === 'administrador_general') {
+  if (['admin_supremo', 'administrador_general'].includes(String(req.user?.role))) {
     const candidate = Number(req.query.branch_id ?? req.body.branch_id);
-    if (!candidate) throw new HttpError(400, 'branch_id es requerido para administrador_general');
+    if (!candidate) throw new HttpError(400, 'branch_id es requerido para este rol');
     return candidate;
   }
 

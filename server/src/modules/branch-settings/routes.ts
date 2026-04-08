@@ -7,7 +7,7 @@ import { getBranchSettingsController, upsertBranchSettingsController } from './c
 import { upsertBranchSettingsSchema } from './schema.js';
 
 const router = Router();
-router.use(authMiddleware, roleMiddleware(['administrador_general', 'encargado_sucursal']));
+router.use(authMiddleware, roleMiddleware(['admin_supremo', 'administrador_general', 'encargado_sucursal']));
 
 router.get('/', asyncHandler(getBranchSettingsController));
 router.put('/', validateRequest({ body: upsertBranchSettingsSchema }), asyncHandler(upsertBranchSettingsController));

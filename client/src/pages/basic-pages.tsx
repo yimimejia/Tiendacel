@@ -1392,13 +1392,13 @@ export function ConfiguracionPage() {
   const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
   const branchesQuery = useQuery({
     queryKey: ['branches-config'],
-    enabled: role === 'administrador_general',
+    enabled: ['admin_supremo', 'administrador_general'].includes(role),
     queryFn: async () => (await apiRequest<any[]>('/branches')).data,
     staleTime: 60000,
   });
 
   useEffect(() => {
-    if (role !== 'administrador_general') return;
+    if (!['admin_supremo', 'administrador_general'].includes(role)) return;
     if (selectedBranchId) return;
     const branchId = me.data?.branch_id ?? branchesQuery.data?.[0]?.id ?? null;
     if (branchId) setSelectedBranchId(branchId);
@@ -1406,9 +1406,9 @@ export function ConfiguracionPage() {
 
   const branchSettingsQuery = useQuery({
     queryKey: ['branch-settings', selectedBranchId, role],
-    enabled: role === 'administrador_general' ? Boolean(selectedBranchId) : true,
+    enabled: ['admin_supremo', 'administrador_general'].includes(role) ? Boolean(selectedBranchId) : true,
     queryFn: async () => {
-      const suffix = role === 'administrador_general' && selectedBranchId ? `?branch_id=${selectedBranchId}` : '';
+      const suffix = ['admin_supremo', 'administrador_general'].includes(role) && selectedBranchId ? `?branch_id=${selectedBranchId}` : '';
       try {
         return (await apiRequest<any>(`/branch-settings${suffix}`)).data;
       } catch {
@@ -1429,15 +1429,21 @@ export function ConfiguracionPage() {
       phone: source.phone ?? '',
       address: source.address ?? '',
       invoice_footer: source.invoice_footer ?? 'Gracias por su compra.',
-      ncf_current: source.feature_flags?.ncf_current ?? 'B0100000001',
-      ncf_range_end: source.feature_flags?.ncf_range_end ?? 'B0100000500',
+      ncf_cf_current: source.feature_flags?.ncf?.consumidor_final?.current ?? '',
+      ncf_cf_end: source.feature_flags?.ncf?.consumidor_final?.range_end ?? '',
+      ncf_fiscal_current: source.feature_flags?.ncf?.credito_fiscal?.current ?? '',
+      ncf_fiscal_end: source.feature_flags?.ncf?.credito_fiscal?.range_end ?? '',
+      ncf_gov_current: source.feature_flags?.ncf?.gubernamental?.current ?? '',
+      ncf_gov_end: source.feature_flags?.ncf?.gubernamental?.range_end ?? '',
+      ncf_special_current: source.feature_flags?.ncf?.regimen_especial?.current ?? '',
+      ncf_special_end: source.feature_flags?.ncf?.regimen_especial?.range_end ?? '',
     });
   }, [branchSettingsQuery.data, me?.data?.branch_name]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       const payload = {
-        branch_id: role === 'administrador_general' ? selectedBranchId : undefined,
+        branch_id: ['admin_supremo', 'administrador_general'].includes(role) ? selectedBranchId : undefined,
         business_name: formState.business_name ?? null,
         fiscal_name: formState.fiscal_name ?? null,
         rnc: formState.rnc ?? null,
@@ -1445,8 +1451,12 @@ export function ConfiguracionPage() {
         address: formState.address ?? null,
         invoice_footer: formState.invoice_footer ?? null,
         feature_flags: {
-          ncf_current: formState.ncf_current ?? null,
-          ncf_range_end: formState.ncf_range_end ?? null,
+          ncf: {
+            consumidor_final: { current: formState.ncf_cf_current ?? null, range_end: formState.ncf_cf_end ?? null },
+            credito_fiscal: { current: formState.ncf_fiscal_current ?? null, range_end: formState.ncf_fiscal_end ?? null },
+            gubernamental: { current: formState.ncf_gov_current ?? null, range_end: formState.ncf_gov_end ?? null },
+            regimen_especial: { current: formState.ncf_special_current ?? null, range_end: formState.ncf_special_end ?? null },
+          },
         },
       };
       return apiRequest('/branch-settings', { method: 'PUT', body: JSON.stringify(payload) });
@@ -1462,7 +1472,7 @@ export function ConfiguracionPage() {
   return (
     <section className="space-y-5">
       <PanelTitulo titulo="Configuración" descripcion="Factura, NCF y parámetros por sucursal." />
-      {role === 'administrador_general' ? (
+      {['admin_supremo', 'administrador_general'].includes(role) ? (
         <Card className="p-5">
           <Select label="Sucursal a configurar" value={selectedBranchId ?? ''} onChange={(e) => setSelectedBranchId(Number(e.target.value))}>
             <option value="">Selecciona sucursal</option>
@@ -1480,14 +1490,15 @@ export function ConfiguracionPage() {
       </Card>
       <Card className="p-5">
         <h3 className="text-sm font-semibold mb-2">NCF</h3>
-        <div className="grid gap-3 md:grid-cols-2">
-          <Input label="NCF actual" value={formState.ncf_current ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_current: e.target.value }))} />
-          <Input label="NCF final de rango" value={formState.ncf_range_end ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_range_end: e.target.value }))} />
-        </div>
-        <div className="grid gap-2 text-sm md:grid-cols-3 mt-3">
-          <p><strong>Inicio:</strong> {formState.ncf_current ?? '-'}</p>
-          <p><strong>Final:</strong> {formState.ncf_range_end ?? '-'}</p>
-          <p><strong>Estado:</strong> Activo</p>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Input label="Consumidor final · NCF actual" value={formState.ncf_cf_current ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_cf_current: e.target.value }))} />
+          <Input label="Consumidor final · NCF final" value={formState.ncf_cf_end ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_cf_end: e.target.value }))} />
+          <Input label="Crédito fiscal · NCF actual" value={formState.ncf_fiscal_current ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_fiscal_current: e.target.value }))} />
+          <Input label="Crédito fiscal · NCF final" value={formState.ncf_fiscal_end ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_fiscal_end: e.target.value }))} />
+          <Input label="Gubernamental · NCF actual" value={formState.ncf_gov_current ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_gov_current: e.target.value }))} />
+          <Input label="Gubernamental · NCF final" value={formState.ncf_gov_end ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_gov_end: e.target.value }))} />
+          <Input label="Régimen especial · NCF actual" value={formState.ncf_special_current ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_special_current: e.target.value }))} />
+          <Input label="Régimen especial · NCF final" value={formState.ncf_special_end ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_special_end: e.target.value }))} />
         </div>
       </Card>
       <Card className="p-5">
