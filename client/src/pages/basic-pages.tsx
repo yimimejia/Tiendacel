@@ -1353,7 +1353,7 @@ export function VentasPage() {
   const [mixedMethod, setMixedMethod] = useState('tarjeta');
   const [cashAmount, setCashAmount] = useState(0);
   const [productSearch, setProductSearch] = useState('');
-  const [inventoryItems, setInventoryItems] = useState<Array<{ id: number; name: string; price: number; stock: number; photo?: string }>>([]);
+  const [inventoryItems, setInventoryItems] = useState<Array<{ id: number; name: string; price: number; stock: number; photo?: string; photos?: string[] }>>([]);
   const [saleType, setSaleType] = useState('contado');
   const [seller, setSeller] = useState('');
   const [customerSearch, setCustomerSearch] = useState('PORTADOR');
@@ -1482,7 +1482,7 @@ export function VentasPage() {
             {visibleProducts.map((product) => (
               <Card key={product.id} className="p-3 border border-slate-200">
                 <div className="h-24 bg-slate-100 rounded-lg mb-2 overflow-hidden flex items-center justify-center">
-                  {product.photo ? <img src={product.photo} alt={product.name} className="h-full w-full object-cover" /> : <span className="text-slate-400 text-xs">Sin foto</span>}
+                  {product.photos?.[0] || product.photo ? <img src={product.photos?.[0] ?? product.photo} alt={product.name} className="h-full w-full object-cover" /> : <span className="text-slate-400 text-xs">Sin foto</span>}
                 </div>
                 <p className="font-medium text-sm">{product.name}</p>
                 <p className="text-xs text-slate-500">Stock: {product.stock}</p>
