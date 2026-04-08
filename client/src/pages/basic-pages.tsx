@@ -131,8 +131,8 @@ function buildNcfStats(current: string, end: string, usedRaw?: number): NcfStats
 
   return {
     current: current ?? '',
+    rangeStart: current ?? '',
     rangeEnd: end ?? '',
-    used,
     available,
     percentUsed,
   };
@@ -1208,11 +1208,11 @@ function Pendiente({ titulo }: { titulo: string }) {
 
 export const NuevaReparacionPage = () => <Pendiente titulo="Nueva reparación" />;
 export function InventarioPage() {
-  const [items, setItems] = useState<Array<{ id: number; name: string; cost: number; price: number; stock: number; photo?: string }>>([]);
+  const [items, setItems] = useState<Array<{ id: number; name: string; cost: number; price: number; stock: number; photos?: string[] }>>([]);
   const [search, setSearch] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const form = useForm<{ name: string; cost: number; price: number; stock: number; photo_file?: FileList }>({
+  const form = useForm<{ name: string; cost: number; price: number; stock: number; photo_files?: FileList }>({
     defaultValues: { name: '', cost: 0, price: 0, stock: 1 },
   });
 
@@ -1239,17 +1239,18 @@ export function InventarioPage() {
       return;
     }
 
-    let photo: string | undefined;
-    const file = v.photo_file?.[0];
-    if (file) {
-      photo = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.readAsDataURL(file);
-      });
-    }
+    const photos = await Promise.all(
+      Array.from(v.photo_files ?? []).map(
+        (file) =>
+          new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result));
+            reader.readAsDataURL(file);
+          }),
+      ),
+    );
 
-    const payload = { id: editingId ?? Date.now(), name: v.name.trim(), cost: v.cost, price: v.price, stock: v.stock, photo };
+    const payload = { id: editingId ?? Date.now(), name: v.name.trim(), cost: v.cost, price: v.price, stock: v.stock, photos };
     if (editingId) {
       setItems((prev) => prev.map((it) => (it.id === editingId ? payload : it)));
     } else {
@@ -1271,7 +1272,7 @@ export function InventarioPage() {
           <Input label="Costo" type="number" step="0.01" {...form.register('cost', { valueAsNumber: true })} />
           <Input label="Precio venta" type="number" step="0.01" {...form.register('price', { valueAsNumber: true })} />
           <Input label="Stock" type="number" {...form.register('stock', { valueAsNumber: true })} />
-          <Input label="Foto del producto" type="file" accept="image/*" className="md:col-span-2" {...form.register('photo_file')} />
+          <Input label="Fotos del producto" type="file" accept="image/*" multiple className="md:col-span-2" {...form.register('photo_files')} />
           {formError ? <p className="text-sm text-red-600 md:col-span-4">{formError}</p> : null}
           <div className="md:col-span-4">
             <Btn type="submit">{editingId ? 'Guardar cambios' : 'Agregar al inventario'}</Btn>
@@ -1285,7 +1286,7 @@ export function InventarioPage() {
         {filteredItems.map((item) => (
           <Card key={item.id} className="overflow-hidden">
             <div className="h-48 bg-slate-100 flex items-center justify-center">
-              {item.photo ? <img src={item.photo} alt={item.name} className="h-full w-full object-cover" /> : <span className="text-slate-400 text-sm">Sin foto</span>}
+              {item.photos?.length ? <img src={item.photos[0]} alt={item.name} className="h-full w-full object-cover" /> : <span className="text-slate-400 text-sm">Sin foto</span>}
             </div>
             <div className="p-4 space-y-2">
               <p className="font-semibold">{item.name}</p>
