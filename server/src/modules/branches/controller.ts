@@ -4,7 +4,7 @@ import { assertBranchAccess } from '../../middlewares/branch-access-middleware.j
 import { sendList, sendSuccess } from '../../utils/api-response.js';
 import { createBranch, getBranchById, listBranches, toggleBranchStatus, updateBranch } from './service.js';
 
-const UNRESTRICTED_ROLES = ['admin_supremo', 'administrador_general'];
+const UNRESTRICTED_ROLES = ['admin_supremo'];
 
 export async function listBranchesController(req: Request, res: Response) {
   const role = req.user?.role ?? '';

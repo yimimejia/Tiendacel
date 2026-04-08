@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { HttpError } from '../utils/http-error.js';
 
-const UNRESTRICTED_ROLES = ['admin_supremo', 'administrador_general'];
+const UNRESTRICTED_ROLES = ['admin_supremo'];
 
 export function assertBranchAccess(userRole: string, userBranchId: string | null, targetBranchId: number | null) {
   if (UNRESTRICTED_ROLES.includes(userRole)) return;

@@ -5,9 +5,13 @@ import { HttpError } from '../../utils/http-error.js';
 import { getBranchSettings, upsertBranchSettings } from './service.js';
 
 function resolveBranchId(req: Request) {
-  if (['admin_supremo', 'administrador_general'].includes(String(req.user?.role))) {
+  const role = String(req.user?.role);
+  if (['admin_supremo', 'administrador_general'].includes(role)) {
     const candidate = Number(req.query.branch_id ?? req.body.branch_id);
     if (!candidate) throw new HttpError(400, 'branch_id es requerido para este rol');
+    if (role === 'administrador_general' && Number(req.user?.branchId ?? 0) !== candidate) {
+      throw new HttpError(403, 'No puedes gestionar la configuración de otra sucursal');
+    }
     return candidate;
   }
 
