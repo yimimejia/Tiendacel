@@ -1412,7 +1412,19 @@ export function VentasPage() {
   const repairOrderCode = `${(selectedBrand || 'EQ').slice(0, 2).toUpperCase()}-${String(orderSequence).padStart(6, '0')}`;
   const isPresetBrand = selectedBrand && selectedBrand in DEVICE_MODELS_BY_BRAND;
   const modelsForBrand = isPresetBrand ? DEVICE_MODELS_BY_BRAND[selectedBrand] : [];
-  const invoiceNumber = `FAC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+  const invoiceNumber = (() => {
+    const settings = branchSettingsQuery.data?.feature_flags?.ncf?.[(() => {
+      if (comprobanteType === 'Crédito fiscal') return 'credito_fiscal';
+      if (comprobanteType === 'Gubernamental') return 'gubernamental';
+      if (comprobanteType === 'Régimen especial') return 'regimen_especial';
+      return 'consumidor_final';
+    })()];
+    const start = String(settings?.current ?? settings?.range_start ?? '');
+    const end = String(settings?.range_end ?? '');
+    if (!start && !end) return `FAC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+    if (start && end) return `${start} - ${end}`;
+    return start || end || `FAC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+  })();
 
   useEffect(() => {
     try {
