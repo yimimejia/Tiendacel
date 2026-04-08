@@ -1,10 +1,10 @@
-import { and, asc, eq, ilike, sql } from 'drizzle-orm';
+import { and, asc, eq, ilike, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { branches } from '../../db/schema.js';
+import { branches, roles, userBranchAccess, users } from '../../db/schema.js';
 import { HttpError } from '../../utils/http-error.js';
 import { parsePagination } from '../../utils/pagination.js';
 
-export async function listBranches(query: Record<string, unknown>, forcedBranchId?: number | null) {
+export async function listBranches(query: Record<string, unknown>, forcedBranchIds?: number[] | null) {
   const { page, limit, offset } = parsePagination(query);
   const search = typeof query.search === 'string' ? query.search : undefined;
   const includeInactive = String(query.include_inactive ?? 'false') === 'true';
@@ -12,7 +12,7 @@ export async function listBranches(query: Record<string, unknown>, forcedBranchI
   const filters = [];
   if (!includeInactive) filters.push(eq(branches.isActive, true));
   if (search) filters.push(ilike(branches.name, `%${search}%`));
-  if (forcedBranchId) filters.push(eq(branches.id, forcedBranchId));
+  if (forcedBranchIds?.length) filters.push(inArray(branches.id, forcedBranchIds));
 
   const where = filters.length ? and(...filters) : undefined;
 
@@ -20,6 +20,40 @@ export async function listBranches(query: Record<string, unknown>, forcedBranchI
   const totalResult = await db.select({ count: sql<number>`count(*)` }).from(branches).where(where);
 
   return { data, meta: { page, limit, total: Number(totalResult[0]?.count ?? 0) } };
+}
+
+export async function getAccessibleBranchIdsForUser(userId: number, fallbackBranchId?: number | null) {
+  const links = await db
+    .select({ branchId: userBranchAccess.branchId })
+    .from(userBranchAccess)
+    .where(eq(userBranchAccess.userId, userId));
+
+  const ids = new Set<number>(links.map((item) => Number(item.branchId)));
+  if (fallbackBranchId) ids.add(Number(fallbackBranchId));
+  return Array.from(ids);
+}
+
+export async function assignAdminBranchAccess(branchId: number, userId: number) {
+  const [user] = await db
+    .select({ id: users.id, roleName: roles.name })
+    .from(users)
+    .innerJoin(roles, eq(roles.id, users.roleId))
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!user) throw new HttpError(404, 'Usuario no encontrado');
+  if (user.roleName !== 'administrador_general') {
+    throw new HttpError(400, 'Solo se puede asignar acceso de sucursal a usuarios administrador_general');
+  }
+
+  await getBranchById(branchId);
+
+  const [assigned] = await db
+    .insert(userBranchAccess)
+    .values({ userId, branchId })
+    .onConflictDoNothing()
+    .returning();
+
+  return assigned ?? { userId, branchId };
 }
 
 export async function getBranchById(id: number) {

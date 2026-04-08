@@ -2,15 +2,17 @@ import type { Request, Response } from 'express';
 import { createAuditLog } from '../../services/audit-log.service.js';
 import { sendSuccess } from '../../utils/api-response.js';
 import { HttpError } from '../../utils/http-error.js';
+import { getAccessibleBranchIdsForUser } from '../branches/service.js';
 import { getBranchSettings, upsertBranchSettings } from './service.js';
 
-function resolveBranchId(req: Request) {
+async function resolveBranchId(req: Request) {
   const role = String(req.user?.role);
   if (['admin_supremo', 'administrador_general'].includes(role)) {
     const candidate = Number(req.query.branch_id ?? req.body.branch_id);
     if (!candidate) throw new HttpError(400, 'branch_id es requerido para este rol');
-    if (role === 'administrador_general' && Number(req.user?.branchId ?? 0) !== candidate) {
-      throw new HttpError(403, 'No puedes gestionar la configuración de otra sucursal');
+    if (role === 'administrador_general') {
+      const branchIds = await getAccessibleBranchIdsForUser(Number(req.user?.id), Number(req.user?.branchId ?? 0));
+      if (!branchIds.includes(candidate)) throw new HttpError(403, 'No puedes gestionar la configuración de otra sucursal');
     }
     return candidate;
   }
@@ -20,12 +22,12 @@ function resolveBranchId(req: Request) {
 }
 
 export async function getBranchSettingsController(req: Request, res: Response) {
-  const data = await getBranchSettings(resolveBranchId(req));
+  const data = await getBranchSettings(await resolveBranchId(req));
   return sendSuccess(res, 'Configuración de sucursal obtenida correctamente', data);
 }
 
 export async function upsertBranchSettingsController(req: Request, res: Response) {
-  const branchId = resolveBranchId(req);
+  const branchId = await resolveBranchId(req);
   const data = await upsertBranchSettings(branchId, req.body);
 
   await createAuditLog({

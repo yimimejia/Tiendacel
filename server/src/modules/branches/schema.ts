@@ -15,3 +15,7 @@ export const updateBranchSchema = createBranchSchema.partial();
 export const toggleBranchSchema = z.object({
   is_active: z.boolean(),
 });
+
+export const assignBranchAccessSchema = z.object({
+  user_id: z.coerce.number().int().positive(),
+});

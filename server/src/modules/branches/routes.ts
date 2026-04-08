@@ -4,13 +4,14 @@ import { roleMiddleware } from '../../middlewares/role-middleware.js';
 import { validateRequest } from '../../middlewares/validate-request.js';
 import { asyncHandler } from '../../utils/async-handler.js';
 import {
+  assignBranchAccessController,
   createBranchController,
   getBranchController,
   listBranchesController,
   toggleBranchStatusController,
   updateBranchController,
 } from './controller.js';
-import { branchIdParamSchema, createBranchSchema, toggleBranchSchema, updateBranchSchema } from './schema.js';
+import { assignBranchAccessSchema, branchIdParamSchema, createBranchSchema, toggleBranchSchema, updateBranchSchema } from './schema.js';
 
 const router = Router();
 
@@ -39,6 +40,14 @@ router.patch(
   roleMiddleware(['administrador_general', 'admin_supremo']),
   validateRequest({ params: branchIdParamSchema, body: toggleBranchSchema }),
   asyncHandler(toggleBranchStatusController),
+);
+
+router.post(
+  '/:id/assign-access',
+  authMiddleware,
+  roleMiddleware(['admin_supremo']),
+  validateRequest({ params: branchIdParamSchema, body: assignBranchAccessSchema }),
+  asyncHandler(assignBranchAccessController),
 );
 
 export { router as branchesRoutes };

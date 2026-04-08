@@ -521,6 +521,8 @@ export function SucursalesPage() {
   const queryClient = useQueryClient();
   const role = me.data?.role ?? '';
   const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
+  const [assignBranchId, setAssignBranchId] = useState<number | null>(null);
+  const [assignUserId, setAssignUserId] = useState<number | null>(null);
   const [detailTab, setDetailTab] = useState<'pago' | 'editar'>('pago');
   const [showCreate, setShowCreate] = useState(false);
 
@@ -536,6 +538,12 @@ export function SucursalesPage() {
     enabled: role !== 'admin_supremo',
     queryFn: async () => (await apiRequest<any[]>('/branches')).data,
     staleTime: 60000,
+  });
+  const usersQuery = useQuery({
+    queryKey: ['users-admin-general'],
+    enabled: role === 'admin_supremo',
+    queryFn: async () => (await apiRequest<any[]>('/users')).data,
+    staleTime: 30000,
   });
 
   const form = useForm<BranchInput>({ resolver: zodResolver(branchSchema) });
@@ -554,6 +562,14 @@ export function SucursalesPage() {
       apiRequest(`/subscriptions/${branchId}/pause`, { method: 'PATCH', body: JSON.stringify({ pause }) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+    },
+  });
+  const assignMutation = useMutation({
+    mutationFn: async ({ branchId, userId }: { branchId: number; userId: number }) =>
+      apiRequest(`/branches/${branchId}/assign-access`, { method: 'POST', body: JSON.stringify({ user_id: userId }) }),
+    onSuccess: () => {
+      setAssignBranchId(null);
+      setAssignUserId(null);
     },
   });
 
@@ -661,11 +677,43 @@ export function SucursalesPage() {
                   >
                     Entrar →
                   </Btn>
+                  <Btn
+                    size="sm"
+                    variant="soft"
+                    onClick={() => {
+                      setAssignBranchId(sub.branchId);
+                      setAssignUserId(null);
+                    }}
+                  >
+                    Asignar
+                  </Btn>
                 </div>
               </div>
             );
           })}
         </div>
+
+        {assignBranchId ? (
+          <Card className="p-5 space-y-3">
+            <h3 className="text-sm font-semibold text-slate-700">Asignar acceso de sucursal</h3>
+            <Select label="Usuario administrador general" value={assignUserId ?? ''} onChange={(e) => setAssignUserId(Number(e.target.value))}>
+              <option value="">Selecciona usuario</option>
+              {(usersQuery.data ?? [])
+                .filter((u: any) => u.role_name === 'administrador_general')
+                .map((u: any) => <option key={u.id} value={u.id}>{u.full_name} ({u.username_or_email})</option>)}
+            </Select>
+            {assignMutation.error ? <ErrorState message={(assignMutation.error as Error).message} /> : null}
+            <div className="flex gap-2">
+              <Btn
+                onClick={() => assignUserId && assignMutation.mutate({ branchId: assignBranchId, userId: assignUserId })}
+                disabled={!assignUserId || assignMutation.isPending}
+              >
+                {assignMutation.isPending ? 'Asignando...' : 'Guardar asignación'}
+              </Btn>
+              <Btn variant="soft" onClick={() => setAssignBranchId(null)}>Cancelar</Btn>
+            </div>
+          </Card>
+        ) : null}
 
         {selectedBranchId !== null ? (
           <SubscriptionDetail
@@ -1744,6 +1792,7 @@ export function ConfiguracionPage() {
             {saveMutation.isPending ? 'Guardando...' : 'Guardar configuración'}
           </Btn>
         </div>
+        {saveMutation.error ? <div className="mt-3"><ErrorState message={(saveMutation.error as Error).message} /></div> : null}
       </Card>
     </section>
   );

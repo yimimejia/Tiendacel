@@ -98,6 +98,21 @@ export const users = pgTable(
   ],
 );
 
+export const userBranchAccess = pgTable(
+  'user_branch_access',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id').notNull().references(() => users.id),
+    branchId: integer('branch_id').notNull().references(() => branches.id),
+    ...timestamps,
+  },
+  (table) => [
+    unique('uniq_user_branch_access').on(table.userId, table.branchId),
+    index('idx_user_branch_access_user_id').on(table.userId),
+    index('idx_user_branch_access_branch_id').on(table.branchId),
+  ],
+);
+
 export const customers = pgTable(
   'customers',
   {
@@ -542,6 +557,7 @@ export const rolesRelations = relations(roles, ({ many }) => ({
 
 export const branchesRelations = relations(branches, ({ many }) => ({
   users: many(users),
+  userBranchAccess: many(userBranchAccess),
   devices: many(devices),
   deviceStatusHistory: many(deviceStatusHistory),
   devicePayments: many(devicePayments),
@@ -556,6 +572,7 @@ export const branchesRelations = relations(branches, ({ many }) => ({
 export const usersRelations = relations(users, ({ one, many }) => ({
   role: one(roles, { fields: [users.roleId], references: [roles.id] }),
   branch: one(branches, { fields: [users.branchId], references: [branches.id] }),
+  branchAccess: many(userBranchAccess),
   assignedDevices: many(devices),
   statusChanges: many(deviceStatusHistory),
   devicePayments: many(devicePayments),
@@ -563,6 +580,11 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   inventoryTransfers: many(inventoryTransfers),
   sales: many(sales),
   auditLogs: many(auditLogs),
+}));
+
+export const userBranchAccessRelations = relations(userBranchAccess, ({ one }) => ({
+  user: one(users, { fields: [userBranchAccess.userId], references: [users.id] }),
+  branch: one(branches, { fields: [userBranchAccess.branchId], references: [branches.id] }),
 }));
 
 export const customersRelations = relations(customers, ({ many }) => ({
