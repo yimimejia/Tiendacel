@@ -110,6 +110,7 @@ const DEVICE_MODELS_BY_BRAND: Record<string, string[]> = {
   realme: ['GT 6', 'GT 5', '12 Pro+', '11 Pro+', 'C67'],
   vivo: ['X100 Pro', 'V30', 'V29', 'Y100', 'Y36'],
 };
+const INVENTORY_STORAGE_KEY = 'vt_inventory_items';
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; label: string }> = {
   rojo: { bg: 'bg-red-100 border-red-400', text: 'text-red-700', label: 'Vencido' },
@@ -1136,6 +1137,19 @@ export function InventarioPage() {
     defaultValues: { name: '', cost: 0, price: 0, stock: 1 },
   });
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(INVENTORY_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) setItems(parsed);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(items));
+  }, [items]);
+
   const onSubmit = form.handleSubmit(async (v) => {
     if (!v.name?.trim()) {
       setFormError('El nombre del producto es obligatorio.');
@@ -1258,6 +1272,8 @@ export function VentasPage() {
   const [paymentMethod, setPaymentMethod] = useState('efectivo');
   const [mixedMethod, setMixedMethod] = useState('tarjeta');
   const [cashAmount, setCashAmount] = useState(0);
+  const [productSearch, setProductSearch] = useState('');
+  const [inventoryItems, setInventoryItems] = useState<Array<{ id: number; name: string; price: number; stock: number; photo?: string }>>([]);
   const salesForm = useForm<{ description: string; qty: number; price: number }>({ defaultValues: { description: '', qty: 1, price: 0 } });
   const repairForm = useForm<{
     customer_name: string;
@@ -1308,8 +1324,28 @@ export function VentasPage() {
   const modelsForBrand = isPresetBrand ? DEVICE_MODELS_BY_BRAND[selectedBrand] : [];
   const invoiceNumber = `FAC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(INVENTORY_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) setInventoryItems(parsed);
+    } catch {}
+  }, []);
+
   const subtotal = cart.reduce((acc, item) => acc + item.qty * item.price, 0);
   const mixedRemaining = Math.max(0, subtotal - cashAmount);
+  const visibleProducts = inventoryItems.filter((item) => item.name.toLowerCase().includes(productSearch.toLowerCase()));
+
+  const addProductToCart = (product: { id: number; name: string; price: number }) => {
+    setCart((prev) => {
+      const existing = prev.find((it) => it.description === product.name);
+      if (existing) {
+        return prev.map((it) => (it.description === product.name ? { ...it, qty: it.qty + 1 } : it));
+      }
+      return [...prev, { id: Date.now(), description: product.name, qty: 1, price: Number(product.price) }];
+    });
+  };
 
   return (
     <section className="space-y-5">
@@ -1321,7 +1357,25 @@ export function VentasPage() {
         </div>
       </Card>
       <Card className="p-5 space-y-4">
-        <h3 className="font-semibold text-slate-700">Agregar producto al carrito</h3>
+        <h3 className="font-semibold text-slate-700">Punto de venta · Selecciona productos</h3>
+        <Input label="Buscar en inventario" placeholder="Busca por nombre..." value={productSearch} onChange={(e) => setProductSearch(e.target.value)} />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {visibleProducts.map((product) => (
+            <Card key={product.id} className="p-3 border border-slate-200">
+              <div className="h-28 bg-slate-100 rounded-lg mb-2 overflow-hidden flex items-center justify-center">
+                {product.photo ? <img src={product.photo} alt={product.name} className="h-full w-full object-cover" /> : <span className="text-slate-400 text-xs">Sin foto</span>}
+              </div>
+              <p className="font-medium text-sm">{product.name}</p>
+              <p className="text-xs text-slate-500">Stock: {product.stock}</p>
+              <p className="font-semibold text-indigo-700">RD$ {Number(product.price).toFixed(2)}</p>
+              <Btn className="mt-2 w-full" size="sm" onClick={() => addProductToCart(product)}>Agregar</Btn>
+            </Card>
+          ))}
+        </div>
+        {visibleProducts.length === 0 ? <p className="text-sm text-slate-400">No hay productos disponibles en inventario.</p> : null}
+      </Card>
+      <Card className="p-5 space-y-4">
+        <h3 className="font-semibold text-slate-700">Agregar línea manual (opcional)</h3>
         <form className="grid gap-3 md:grid-cols-4" onSubmit={salesForm.handleSubmit((v) => {
           setCart((prev) => [...prev, { id: Date.now(), ...v }]);
           salesForm.reset({ description: '', qty: 1, price: 0 });
