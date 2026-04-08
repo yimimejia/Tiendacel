@@ -2,6 +2,7 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
+import fs from 'node:fs';
 import path from 'node:path';
 import { env } from '../config/env.js';
 import { errorHandler } from '../middlewares/error-handler.js';
@@ -34,14 +35,25 @@ export function createApp() {
   app.use('/uploads', express.static(uploadDir));
   app.use('/api', apiRouter);
 
-  if (env.SERVE_FRONTEND) {
-    const distPath = resolveFromRepo(env.FRONTEND_DIST_PATH);
+  const distPath = resolveFromRepo(env.FRONTEND_DIST_PATH);
+  const indexFilePath = path.join(distPath, 'index.html');
+  const canServeFrontend = env.SERVE_FRONTEND || fs.existsSync(indexFilePath);
+
+  if (canServeFrontend) {
     app.use(express.static(distPath));
     app.get('*', (req, res, next) => {
       if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
         return next();
       }
-      return res.sendFile(path.join(distPath, 'index.html'));
+      return res.sendFile(indexFilePath);
+    });
+  } else {
+    app.get('/', (_req, res) => {
+      res.status(200).json({
+        success: true,
+        message: 'Backend activo. Frontend no compilado aún.',
+        data: { health: '/api/health', docs: 'Ejecuta el build del cliente o configura SERVE_FRONTEND=true' },
+      });
     });
   }
 
