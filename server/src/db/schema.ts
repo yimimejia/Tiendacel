@@ -81,7 +81,7 @@ export const users = pgTable(
   {
     id: serial('id').primaryKey(),
     fullName: varchar('full_name', { length: 160 }).notNull(),
-    usernameOrEmail: varchar('username_or_email', { length: 140 }).notNull().unique(),
+    usernameOrEmail: varchar('username_or_email', { length: 140 }).notNull(),
     passwordHash: text('password_hash').notNull(),
     roleId: integer('role_id').notNull().references(() => roles.id),
     branchId: integer('branch_id').references(() => branches.id),
@@ -90,6 +90,7 @@ export const users = pgTable(
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (table) => [
+    uniqueIndex('uniq_users_username_branch').on(table.usernameOrEmail, table.branchId),
     index('idx_users_username_or_email').on(table.usernameOrEmail),
     index('idx_users_role_id').on(table.roleId),
     index('idx_users_branch_id').on(table.branchId),

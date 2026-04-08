@@ -11,7 +11,11 @@ import { PanelTitulo } from '@/components/panel-titulo';
 import { useLogin, useMe } from '@/features/auth/use-auth';
 import { apiRequest } from '@/lib/api';
 
-const loginSchema = z.object({ username_or_email: z.string().min(1), password: z.string().min(1) });
+const loginSchema = z.object({
+  username_or_email: z.string().min(1),
+  password: z.string().min(1),
+  branch_code: z.string().optional(),
+});
 type LoginInput = z.infer<typeof loginSchema>;
 
 const branchSchema = z.object({
@@ -205,9 +209,19 @@ export function LoginPage() {
           <p className="mt-1 text-sm text-slate-500">Accede a tu panel de gestión</p>
         </div>
         <Card className="p-6">
-          <form className="space-y-4" onSubmit={form.handleSubmit((v) => loginMutation.mutate(v, { onSuccess: () => navigate('/dashboard') }))}>
+          <form className="space-y-4" onSubmit={form.handleSubmit((v) => loginMutation.mutate(v, {
+            onSuccess: (data) => {
+              const role = data.user.role;
+              if (['administrador_general', 'caja_ventas'].includes(role)) {
+                navigate('/ventas');
+                return;
+              }
+              navigate('/dashboard');
+            },
+          }))}>
             <Input label="Usuario o correo" placeholder="usuario" {...form.register('username_or_email')} />
             <Input label="Contraseña" type="password" placeholder="••••••••" {...form.register('password')} />
+            <Input label="Código sucursal (opcional)" placeholder="SUC-001" {...form.register('branch_code')} />
             {loginMutation.error ? <ErrorState message={loginMutation.error.message} /> : null}
             <Btn type="submit" disabled={loginMutation.isPending} className="w-full mt-1">
               {loginMutation.isPending ? 'Ingresando...' : 'Ingresar'}
@@ -1051,16 +1065,182 @@ function Pendiente({ titulo }: { titulo: string }) {
 }
 
 export const NuevaReparacionPage = () => <Pendiente titulo="Nueva reparación" />;
-export const InventarioPage = () => <Pendiente titulo="Inventario" />;
+export function InventarioPage() {
+  const [items, setItems] = useState<Array<{ id: number; name: string; cost: number; price: number; stock: number }>>([]);
+  const form = useForm<{ name: string; cost: number; price: number; stock: number }>({
+    defaultValues: { name: '', cost: 0, price: 0, stock: 1 },
+  });
+
+  const onSubmit = form.handleSubmit((v) => {
+    setItems((prev) => [...prev, { id: Date.now(), ...v }]);
+    form.reset({ name: '', cost: 0, price: 0, stock: 1 });
+  });
+
+  return (
+    <section className="space-y-5">
+      <PanelTitulo titulo="Inventario" descripcion="Registra productos con costo, precio y ganancia." />
+      <Card className="p-5">
+        <form className="grid gap-3 md:grid-cols-4" onSubmit={onSubmit}>
+          <Input label="Producto" {...form.register('name')} />
+          <Input label="Costo" type="number" step="0.01" {...form.register('cost', { valueAsNumber: true })} />
+          <Input label="Precio venta" type="number" step="0.01" {...form.register('price', { valueAsNumber: true })} />
+          <Input label="Stock" type="number" {...form.register('stock', { valueAsNumber: true })} />
+          <div className="md:col-span-4">
+            <Btn type="submit">Agregar al inventario</Btn>
+          </div>
+        </form>
+      </Card>
+      <Card className="p-5 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-slate-500">
+              <th className="pb-2">Producto</th>
+              <th className="pb-2">Costo</th>
+              <th className="pb-2">Precio</th>
+              <th className="pb-2">Ganancia</th>
+              <th className="pb-2">Stock</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr key={item.id} className="border-t border-slate-100">
+                <td className="py-2">{item.name}</td>
+                <td className="py-2">RD$ {item.cost.toFixed(2)}</td>
+                <td className="py-2">RD$ {item.price.toFixed(2)}</td>
+                <td className="py-2 text-emerald-700 font-medium">RD$ {(item.price - item.cost).toFixed(2)}</td>
+                <td className="py-2">{item.stock}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {items.length === 0 ? <p className="text-sm text-slate-400 mt-3">Aún no hay productos registrados.</p> : null}
+      </Card>
+    </section>
+  );
+}
 export const MovimientosInventarioPage = () => <Pendiente titulo="Movimientos de inventario" />;
 export const TransferenciasPage = () => <Pendiente titulo="Transferencias" />;
-export const VentasPage = () => <Pendiente titulo="Ventas" />;
+export function VentasPage() {
+  const me = useMe();
+  const [cart, setCart] = useState<Array<{ id: number; description: string; qty: number; price: number }>>([]);
+  const [showRepairModal, setShowRepairModal] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState('efectivo');
+  const [mixedMethod, setMixedMethod] = useState('tarjeta');
+  const [cashAmount, setCashAmount] = useState(0);
+  const salesForm = useForm<{ description: string; qty: number; price: number }>({ defaultValues: { description: '', qty: 1, price: 0 } });
+  const repairForm = useForm<{ customer_name: string; customer_phone: string; brand: string; model: string; issue: string; assigned_to?: string }>({
+    defaultValues: { customer_name: '', customer_phone: '', brand: '', model: '', issue: '', assigned_to: '' },
+  });
+
+  const assignable = useQuery({
+    queryKey: ['repairs', 'assignable-techs', me.data?.branch_id],
+    enabled: showRepairModal && Boolean(me.data?.branch_id),
+    queryFn: async () => (await apiRequest<AssignableTech[]>('/repairs/assignable-technicians')).data,
+  });
+
+  const comprobantes = ['Consumidor final', 'Crédito fiscal', 'Gubernamental', 'Régimen especial'];
+
+  const subtotal = cart.reduce((acc, item) => acc + item.qty * item.price, 0);
+  const mixedRemaining = Math.max(0, subtotal - cashAmount);
+
+  return (
+    <section className="space-y-5">
+      <PanelTitulo titulo="Sistema de cobro" descripcion="Registro de ventas y recepción de equipos para reparar." />
+      <Card className="p-5">
+        <div className="flex flex-wrap gap-2">
+          <Btn onClick={() => setShowRepairModal(true)}>+ Añadir equipo para reparar</Btn>
+        </div>
+      </Card>
+      <Card className="p-5 space-y-4">
+        <h3 className="font-semibold text-slate-700">Agregar producto al carrito</h3>
+        <form className="grid gap-3 md:grid-cols-4" onSubmit={salesForm.handleSubmit((v) => {
+          setCart((prev) => [...prev, { id: Date.now(), ...v }]);
+          salesForm.reset({ description: '', qty: 1, price: 0 });
+        })}>
+          <Input label="Descripción" {...salesForm.register('description')} />
+          <Input label="Cantidad" type="number" {...salesForm.register('qty', { valueAsNumber: true })} />
+          <Input label="Precio unitario" type="number" step="0.01" {...salesForm.register('price', { valueAsNumber: true })} />
+          <div className="md:pt-6"><Btn type="submit">Agregar</Btn></div>
+        </form>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Select label="Comprobante" defaultValue="Consumidor final">
+            {comprobantes.map((item) => <option key={item} value={item}>{item}</option>)}
+          </Select>
+          <Select label="Método de pago" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+            <option value="efectivo">Efectivo</option>
+            <option value="transferencia">Transferencia</option>
+            <option value="tarjeta">Tarjeta</option>
+            <option value="mixto">Mixto</option>
+          </Select>
+          {paymentMethod === 'mixto' ? (
+            <>
+              <Input label="Monto efectivo" type="number" step="0.01" value={cashAmount} onChange={(e) => setCashAmount(Number(e.target.value))} />
+              <Select label="Resto por" value={mixedMethod} onChange={(e) => setMixedMethod(e.target.value)}>
+                <option value="tarjeta">Tarjeta</option>
+                <option value="transferencia">Transferencia</option>
+              </Select>
+              <Input label="Resto pendiente" value={`RD$ ${mixedRemaining.toFixed(2)}`} readOnly />
+            </>
+          ) : null}
+        </div>
+      </Card>
+      <Card className="p-5">
+        <h3 className="font-semibold text-slate-700 mb-3">Carrito</h3>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-slate-500">
+              <th className="pb-2">Descripción</th>
+              <th className="pb-2">Cant.</th>
+              <th className="pb-2">Precio</th>
+              <th className="pb-2">Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cart.map((item) => (
+              <tr key={item.id} className="border-t border-slate-100">
+                <td className="py-2">{item.description}</td>
+                <td className="py-2">{item.qty}</td>
+                <td className="py-2">RD$ {item.price.toFixed(2)}</td>
+                <td className="py-2">RD$ {(item.qty * item.price).toFixed(2)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="mt-3 text-right font-semibold">Total: RD$ {subtotal.toFixed(2)}</p>
+      </Card>
+
+      {showRepairModal ? (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
+          <Card className="w-full max-w-2xl p-6 space-y-3">
+            <h3 className="text-lg font-semibold">Recepción de equipo para reparación</h3>
+            <form className="grid grid-cols-1 md:grid-cols-2 gap-3" onSubmit={repairForm.handleSubmit(() => setShowRepairModal(false))}>
+              <Input label="Nombre cliente" {...repairForm.register('customer_name')} />
+              <Input label="Teléfono cliente" {...repairForm.register('customer_phone')} />
+              <Input label="Marca" {...repairForm.register('brand')} />
+              <Input label="Modelo" {...repairForm.register('model')} />
+              <Input label="Problema reportado" className="md:col-span-2" {...repairForm.register('issue')} />
+              <Select label="Asignar a" className="md:col-span-2" {...repairForm.register('assigned_to')}>
+                <option value="">Selecciona empleado</option>
+                {(assignable.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.full_name}</option>)}
+              </Select>
+              <div className="md:col-span-2 flex justify-end gap-2">
+                <Btn type="button" variant="ghost" onClick={() => setShowRepairModal(false)}>Cancelar</Btn>
+                <Btn type="submit">Guardar recepción</Btn>
+              </div>
+            </form>
+          </Card>
+        </div>
+      ) : null}
+    </section>
+  );
+}
 export const ReportesPage = () => <Pendiente titulo="Reportes" />;
 export const AuditoriaPage = () => <Pendiente titulo="Auditoría" />;
 export const ConsultaReparacionPage = () => <Pendiente titulo="Consulta pública" />;
 export const ReparacionDetallePage = () => <Pendiente titulo="Detalle de reparación" />;
 
 export function ConfiguracionPage() {
+  const me = useMe();
   const queryClient = useQueryClient();
   const settingsQuery = useQuery({ queryKey: ['settings'], queryFn: async () => (await apiRequest<any[]>('/settings')).data, staleTime: 60000 });
   const saveMutation = useMutation({
@@ -1071,20 +1251,31 @@ export function ConfiguracionPage() {
   if (settingsQuery.isLoading) return <LoadingState />;
   if (settingsQuery.error) return <ErrorState message={(settingsQuery.error as Error).message} />;
 
+  const defaults = [
+    { key: 'invoice_business_name', label: 'Nombre del negocio', value: me?.data?.branch_name ?? 'Mi Negocio' },
+    { key: 'invoice_header', label: 'Encabezado factura', value: 'RNC 000000000 · Tel: 809-000-0000' },
+    { key: 'invoice_footer', label: 'Pie de factura', value: '¡Gracias por su compra!' },
+    { key: 'ncf_current', label: 'NCF actual', value: 'B0100000001' },
+    { key: 'ncf_range_end', label: 'NCF final del rango', value: 'B0100000500' },
+  ];
+  const map = new Map((settingsQuery.data ?? []).map((s: any) => [s.key, s]));
+
   return (
     <section className="space-y-5">
       <PanelTitulo titulo="Configuración" descripcion="Ajustes globales del negocio." />
-      {(settingsQuery.data ?? []).map((setting: any) => (
+      {defaults.map((base) => {
+        const setting = map.get(base.key) ?? { key: base.key, value: base.value, description: base.label };
+        return (
         <Card key={setting.key} className="p-5">
-          <p className="text-sm font-semibold">{setting.key}</p>
-          <p className="text-xs text-slate-500">{setting.description}</p>
+          <p className="text-sm font-semibold">{base.label}</p>
+          <p className="text-xs text-slate-500">{setting.description ?? base.label}</p>
           <input
             defaultValue={setting.value}
             className="vt-input mt-2"
             onBlur={(e) => saveMutation.mutate({ key: setting.key, value: e.target.value, description: setting.description ?? undefined })}
           />
         </Card>
-      ))}
+      )})}
     </section>
   );
 }

@@ -4,6 +4,7 @@ import { apiRequest, setAccessToken } from '@/lib/api';
 interface LoginInput {
   username_or_email: string;
   password: string;
+  branch_code?: string;
 }
 
 export interface AuthUser {

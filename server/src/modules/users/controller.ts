@@ -4,17 +4,32 @@ import { sendList, sendSuccess } from '../../utils/api-response.js';
 import { createUser, getUserById, listUsers, resetPassword, toggleUserStatus, updateUser } from './service.js';
 
 export async function listUsersController(req: Request, res: Response) {
-  const result = await listUsers(req.query);
+  const user = {
+    id: Number(req.user?.id),
+    role: String(req.user?.role),
+    branchId: req.user?.branchId ? Number(req.user.branchId) : null,
+  };
+  const result = await listUsers(req.query, user);
   return sendList(res, result.data, result.meta, 'Usuarios obtenidos correctamente');
 }
 
 export async function getUserController(req: Request, res: Response) {
-  const data = await getUserById(Number(req.params.id));
+  const user = {
+    id: Number(req.user?.id),
+    role: String(req.user?.role),
+    branchId: req.user?.branchId ? Number(req.user.branchId) : null,
+  };
+  const data = await getUserById(Number(req.params.id), user);
   return sendSuccess(res, 'Usuario obtenido correctamente', data);
 }
 
 export async function createUserController(req: Request, res: Response) {
-  const data = await createUser(req.body);
+  const user = {
+    id: Number(req.user?.id),
+    role: String(req.user?.role),
+    branchId: req.user?.branchId ? Number(req.user.branchId) : null,
+  };
+  const data = await createUser(req.body, user);
 
   await createAuditLog({
     userId: Number(req.user?.id),
@@ -29,7 +44,12 @@ export async function createUserController(req: Request, res: Response) {
 }
 
 export async function updateUserController(req: Request, res: Response) {
-  const data = await updateUser(Number(req.params.id), req.body);
+  const user = {
+    id: Number(req.user?.id),
+    role: String(req.user?.role),
+    branchId: req.user?.branchId ? Number(req.user.branchId) : null,
+  };
+  const data = await updateUser(Number(req.params.id), req.body, user);
 
   await createAuditLog({
     userId: Number(req.user?.id),
@@ -44,7 +64,12 @@ export async function updateUserController(req: Request, res: Response) {
 }
 
 export async function resetPasswordController(req: Request, res: Response) {
-  await resetPassword(Number(req.params.id), req.body.password);
+  const user = {
+    id: Number(req.user?.id),
+    role: String(req.user?.role),
+    branchId: req.user?.branchId ? Number(req.user.branchId) : null,
+  };
+  await resetPassword(Number(req.params.id), req.body.password, user);
 
   await createAuditLog({
     userId: Number(req.user?.id),
@@ -59,7 +84,12 @@ export async function resetPasswordController(req: Request, res: Response) {
 }
 
 export async function toggleUserStatusController(req: Request, res: Response) {
-  const data = await toggleUserStatus(Number(req.params.id), req.body.is_active);
+  const user = {
+    id: Number(req.user?.id),
+    role: String(req.user?.role),
+    branchId: req.user?.branchId ? Number(req.user.branchId) : null,
+  };
+  const data = await toggleUserStatus(Number(req.params.id), req.body.is_active, user);
 
   await createAuditLog({
     userId: Number(req.user?.id),

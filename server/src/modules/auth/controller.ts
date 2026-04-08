@@ -5,8 +5,8 @@ import { HttpError } from '../../utils/http-error.js';
 import { getMe, login } from './service.js';
 
 export async function loginController(req: Request, res: Response) {
-  const { username_or_email: usernameOrEmail, password } = req.body;
-  const result = await login(usernameOrEmail, password);
+  const { username_or_email: usernameOrEmail, password, branch_code: branchCode } = req.body;
+  const result = await login(usernameOrEmail, password, branchCode);
 
   res.cookie('access_token', result.token, {
     httpOnly: true,
