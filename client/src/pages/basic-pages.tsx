@@ -891,6 +891,18 @@ export function UsuariosPage() {
                     <Btn size="sm" variant="soft" onClick={() => { setEditingId(u.id); setShowCreate(false); }}>Editar</Btn>
                     <Btn
                       size="sm"
+                      variant="ghost"
+                      disabled={resetPassMutation.isPending}
+                      onClick={() => {
+                        const password = window.prompt(`Nueva contraseña para ${u.full_name} (mín. 8 caracteres):`);
+                        if (!password || password.length < 8) return;
+                        resetPassMutation.mutate({ id: u.id, password });
+                      }}
+                    >
+                      Cambiar clave
+                    </Btn>
+                    <Btn
+                      size="sm"
                       variant={u.is_active ? 'danger' : 'soft'}
                       disabled={toggleMutation.isPending}
                       onClick={() => toggleMutation.mutate({ id: u.id, is_active: !u.is_active })}
@@ -1174,6 +1186,7 @@ export function VentasPage() {
   const me = useMe();
   const [cart, setCart] = useState<Array<{ id: number; description: string; qty: number; price: number }>>([]);
   const [showRepairModal, setShowRepairModal] = useState(false);
+  const [orderSequence, setOrderSequence] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState('efectivo');
   const [mixedMethod, setMixedMethod] = useState('tarjeta');
   const [cashAmount, setCashAmount] = useState(0);
@@ -1222,7 +1235,7 @@ export function VentasPage() {
   const totalRepair = Number(repairForm.watch('total') ?? 0);
   const advanceRepair = Number(repairForm.watch('advance') ?? 0);
   const pendingRepair = Math.max(0, totalRepair - advanceRepair);
-  const repairOrderCode = `${(selectedBrand || 'EQ').slice(0, 2).toUpperCase()}-${String(Date.now()).slice(-6)}`;
+  const repairOrderCode = `${(selectedBrand || 'EQ').slice(0, 2).toUpperCase()}-${String(orderSequence).padStart(6, '0')}`;
   const isPresetBrand = selectedBrand && selectedBrand in DEVICE_MODELS_BY_BRAND;
   const modelsForBrand = isPresetBrand ? DEVICE_MODELS_BY_BRAND[selectedBrand] : [];
   const invoiceNumber = `FAC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
@@ -1306,6 +1319,7 @@ export function VentasPage() {
               className="grid grid-cols-1 md:grid-cols-2 gap-3"
               onSubmit={repairForm.handleSubmit(() => {
                 repairForm.reset();
+                setOrderSequence((prev) => prev + 1);
                 setShowRepairModal(false);
               })}
             >
@@ -1374,66 +1388,123 @@ export const ReparacionDetallePage = () => <Pendiente titulo="Detalle de reparac
 export function ConfiguracionPage() {
   const me = useMe();
   const queryClient = useQueryClient();
-  const settingsQuery = useQuery({ queryKey: ['settings'], queryFn: async () => (await apiRequest<any[]>('/settings')).data, staleTime: 60000 });
-  const saveMutation = useMutation({
-    mutationFn: async (payload: { key: string; value: string; description?: string }) => apiRequest('/settings', { method: 'PUT', body: JSON.stringify(payload) }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings'] }),
+  const role = me.data?.role ?? '';
+  const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
+  const branchesQuery = useQuery({
+    queryKey: ['branches-config'],
+    enabled: role === 'administrador_general',
+    queryFn: async () => (await apiRequest<any[]>('/branches')).data,
+    staleTime: 60000,
   });
 
-  if (settingsQuery.isLoading) return <LoadingState />;
-  if (settingsQuery.error) return <ErrorState message={(settingsQuery.error as Error).message} />;
+  useEffect(() => {
+    if (role !== 'administrador_general') return;
+    if (selectedBranchId) return;
+    const branchId = me.data?.branch_id ?? branchesQuery.data?.[0]?.id ?? null;
+    if (branchId) setSelectedBranchId(branchId);
+  }, [role, me.data?.branch_id, branchesQuery.data, selectedBranchId]);
 
-  const defaults = [
-    { key: 'invoice_business_name', label: 'Nombre comercial', value: me?.data?.branch_name ?? 'Mi Negocio' },
-    { key: 'invoice_fiscal_name', label: 'Nombre fiscal', value: me?.data?.branch_name ?? 'Mi Negocio SRL' },
-    { key: 'invoice_rnc', label: 'RNC', value: '101000000' },
-    { key: 'invoice_phone', label: 'Teléfono', value: '809-000-0000' },
-    { key: 'invoice_address', label: 'Dirección', value: 'Dirección principal del negocio' },
-    { key: 'invoice_header', label: 'Encabezado factura', value: 'RNC 000000000 · Tel: 809-000-0000' },
-    { key: 'invoice_footer', label: 'Pie de factura', value: 'Gracias por su compra.' },
-    { key: 'ncf_current', label: 'NCF actual', value: 'B0100000001' },
-    { key: 'ncf_range_end', label: 'NCF final del rango', value: 'B0100000500' },
-  ];
-  const map = new Map((settingsQuery.data ?? []).map((s: any) => [s.key, s]));
-  const getValue = (key: string, fallback: string) => (map.get(key)?.value as string | undefined) ?? fallback;
-  const ncfCurrent = getValue('ncf_current', 'B0100000001');
-  const ncfEnd = getValue('ncf_range_end', 'B0100000500');
+  const branchSettingsQuery = useQuery({
+    queryKey: ['branch-settings', selectedBranchId, role],
+    enabled: role === 'administrador_general' ? Boolean(selectedBranchId) : true,
+    queryFn: async () => {
+      const suffix = role === 'administrador_general' && selectedBranchId ? `?branch_id=${selectedBranchId}` : '';
+      try {
+        return (await apiRequest<any>(`/branch-settings${suffix}`)).data;
+      } catch {
+        return null;
+      }
+    },
+    staleTime: 30000,
+  });
+
+  const [formState, setFormState] = useState<Record<string, any>>({});
+  useEffect(() => {
+    const source = branchSettingsQuery.data;
+    if (!source) return;
+    setFormState({
+      business_name: source.business_name ?? me?.data?.branch_name ?? 'Mi Negocio',
+      fiscal_name: source.fiscal_name ?? `${me?.data?.branch_name ?? 'Mi Negocio'} SRL`,
+      rnc: source.rnc ?? '',
+      phone: source.phone ?? '',
+      address: source.address ?? '',
+      invoice_footer: source.invoice_footer ?? 'Gracias por su compra.',
+      ncf_current: source.feature_flags?.ncf_current ?? 'B0100000001',
+      ncf_range_end: source.feature_flags?.ncf_range_end ?? 'B0100000500',
+    });
+  }, [branchSettingsQuery.data, me?.data?.branch_name]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        branch_id: role === 'administrador_general' ? selectedBranchId : undefined,
+        business_name: formState.business_name ?? null,
+        fiscal_name: formState.fiscal_name ?? null,
+        rnc: formState.rnc ?? null,
+        phone: formState.phone ?? null,
+        address: formState.address ?? null,
+        invoice_footer: formState.invoice_footer ?? null,
+        feature_flags: {
+          ncf_current: formState.ncf_current ?? null,
+          ncf_range_end: formState.ncf_range_end ?? null,
+        },
+      };
+      return apiRequest('/branch-settings', { method: 'PUT', body: JSON.stringify(payload) });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['branch-settings'] });
+    },
+  });
+
+  if (branchSettingsQuery.isLoading || branchesQuery.isLoading) return <LoadingState />;
+  if (branchSettingsQuery.error) return <ErrorState message={(branchSettingsQuery.error as Error).message} />;
 
   return (
     <section className="space-y-5">
-      <PanelTitulo titulo="Configuración" descripcion="Ajustes globales del negocio." />
-      {defaults.map((base) => {
-        const setting = map.get(base.key) ?? { key: base.key, value: base.value, description: base.label };
-        return (
-        <Card key={setting.key} className="p-5">
-          <p className="text-sm font-semibold">{base.label}</p>
-          <p className="text-xs text-slate-500">{setting.description ?? base.label}</p>
-          <input
-            defaultValue={setting.value}
-            className="vt-input mt-2"
-            onBlur={(e) => saveMutation.mutate({ key: setting.key, value: e.target.value, description: setting.description ?? undefined })}
-          />
+      <PanelTitulo titulo="Configuración" descripcion="Factura, NCF y parámetros por sucursal." />
+      {role === 'administrador_general' ? (
+        <Card className="p-5">
+          <Select label="Sucursal a configurar" value={selectedBranchId ?? ''} onChange={(e) => setSelectedBranchId(Number(e.target.value))}>
+            <option value="">Selecciona sucursal</option>
+            {(branchesQuery.data ?? []).map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </Select>
         </Card>
-      )})}
+      ) : null}
+      <Card className="p-5 grid gap-3 md:grid-cols-2">
+        <Input label="Nombre comercial" value={formState.business_name ?? ''} onChange={(e) => setFormState((s) => ({ ...s, business_name: e.target.value }))} />
+        <Input label="Nombre fiscal" value={formState.fiscal_name ?? ''} onChange={(e) => setFormState((s) => ({ ...s, fiscal_name: e.target.value }))} />
+        <Input label="RNC" value={formState.rnc ?? ''} onChange={(e) => setFormState((s) => ({ ...s, rnc: e.target.value }))} />
+        <Input label="Teléfono" value={formState.phone ?? ''} onChange={(e) => setFormState((s) => ({ ...s, phone: e.target.value }))} />
+        <Input label="Dirección" className="md:col-span-2" value={formState.address ?? ''} onChange={(e) => setFormState((s) => ({ ...s, address: e.target.value }))} />
+        <Input label="Pie de factura" className="md:col-span-2" value={formState.invoice_footer ?? ''} onChange={(e) => setFormState((s) => ({ ...s, invoice_footer: e.target.value }))} />
+      </Card>
       <Card className="p-5">
         <h3 className="text-sm font-semibold mb-2">NCF</h3>
-        <div className="grid gap-2 text-sm md:grid-cols-3">
-          <p><strong>Inicio:</strong> {ncfCurrent}</p>
-          <p><strong>Final:</strong> {ncfEnd}</p>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Input label="NCF actual" value={formState.ncf_current ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_current: e.target.value }))} />
+          <Input label="NCF final de rango" value={formState.ncf_range_end ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_range_end: e.target.value }))} />
+        </div>
+        <div className="grid gap-2 text-sm md:grid-cols-3 mt-3">
+          <p><strong>Inicio:</strong> {formState.ncf_current ?? '-'}</p>
+          <p><strong>Final:</strong> {formState.ncf_range_end ?? '-'}</p>
           <p><strong>Estado:</strong> Activo</p>
         </div>
       </Card>
       <Card className="p-5">
         <h3 className="text-sm font-semibold mb-2">Preview factura/ticket</h3>
         <div className="rounded-lg border border-dashed border-slate-300 p-4 text-sm bg-slate-50">
-          <p className="font-semibold">{getValue('invoice_business_name', 'Mi Negocio')}</p>
-          <p>{getValue('invoice_fiscal_name', 'Mi Negocio SRL')}</p>
-          <p>RNC: {getValue('invoice_rnc', '101000000')}</p>
-          <p>Tel: {getValue('invoice_phone', '809-000-0000')}</p>
-          <p>{getValue('invoice_address', 'Dirección principal del negocio')}</p>
+          <p className="font-semibold">{formState.business_name ?? 'Mi Negocio'}</p>
+          <p>{formState.fiscal_name ?? 'Mi Negocio SRL'}</p>
+          <p>RNC: {formState.rnc ?? '-'}</p>
+          <p>Tel: {formState.phone ?? '-'}</p>
+          <p>{formState.address ?? '-'}</p>
           <hr className="my-2" />
-          <p>{getValue('invoice_header', '')}</p>
-          <p className="mt-2">{getValue('invoice_footer', 'Gracias por su compra.')}</p>
+          <p className="mt-2">{formState.invoice_footer ?? 'Gracias por su compra.'}</p>
+        </div>
+        <div className="mt-4 flex justify-end">
+          <Btn onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+            {saveMutation.isPending ? 'Guardando...' : 'Guardar configuración'}
+          </Btn>
         </div>
       </Card>
     </section>

@@ -29,6 +29,7 @@ const BRANCH_MENU: MenuItem[] = [
   { to: '/inventario/transferencias', label: 'Transferencias' },
   { to: '/ventas', label: 'Ventas' },
   { to: '/reportes', label: 'Reportes' },
+  { to: '/configuracion', label: 'Configuración' },
 ];
 
 const ADMIN_GENERAL_MENU: MenuItem[] = [
@@ -41,6 +42,7 @@ const ADMIN_GENERAL_MENU: MenuItem[] = [
   { to: '/ventas', label: 'Ventas' },
   { to: '/reportes', label: 'Reportes' },
   { to: '/auditoria', label: 'Auditoría' },
+  { to: '/configuracion', label: 'Configuración' },
 ];
 
 const TECNICO_MENU: MenuItem[] = [
