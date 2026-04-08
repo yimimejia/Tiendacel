@@ -1427,20 +1427,20 @@ export function VentasPage() {
   const mixedRemaining = Math.max(0, subtotal - cashAmount);
   const ncfMap: Record<string, string> = {
     'Consumidor final':
-      branchSettingsQuery.data?.feature_flags?.ncf?.consumidor_final?.current ??
       branchSettingsQuery.data?.feature_flags?.ncf?.consumidor_final?.range_start ??
+      branchSettingsQuery.data?.feature_flags?.ncf?.consumidor_final?.current ??
       'B02-',
     'Crédito fiscal':
-      branchSettingsQuery.data?.feature_flags?.ncf?.credito_fiscal?.current ??
       branchSettingsQuery.data?.feature_flags?.ncf?.credito_fiscal?.range_start ??
+      branchSettingsQuery.data?.feature_flags?.ncf?.credito_fiscal?.current ??
       'B01-',
     Gubernamental:
-      branchSettingsQuery.data?.feature_flags?.ncf?.gubernamental?.current ??
       branchSettingsQuery.data?.feature_flags?.ncf?.gubernamental?.range_start ??
+      branchSettingsQuery.data?.feature_flags?.ncf?.gubernamental?.current ??
       'B15-',
     'Régimen especial':
-      branchSettingsQuery.data?.feature_flags?.ncf?.regimen_especial?.current ??
       branchSettingsQuery.data?.feature_flags?.ncf?.regimen_especial?.range_start ??
+      branchSettingsQuery.data?.feature_flags?.ncf?.regimen_especial?.current ??
       'B14-',
   };
   const visibleProducts = inventoryItems.filter((item) => item.name.toLowerCase().includes(productSearch.toLowerCase()));
@@ -1486,7 +1486,6 @@ export function VentasPage() {
             <Select label="Tipo de comprobante" value={comprobanteType} onChange={(e) => setComprobanteType(e.target.value)}>
               {comprobantes.map((item) => <option key={item} value={item}>{item}</option>)}
             </Select>
-            <Input label="Factura en curso" value={invoiceNumber} readOnly />
           </div>
           <Input label="Buscar producto por código, nombre o código de barras..." value={productSearch} onChange={(e) => setProductSearch(e.target.value)} />
 
