@@ -1345,6 +1345,7 @@ export function InventarioPage() {
 export const MovimientosInventarioPage = () => <Pendiente titulo="Movimientos de inventario" />;
 export const TransferenciasPage = () => <Pendiente titulo="Transferencias" />;
 export function VentasPage() {
+  const ITBIS_RATE = 0.18;
   const me = useMe();
   const [cart, setCart] = useState<Array<{ id: number; description: string; qty: number; price: number }>>([]);
   const [showRepairModal, setShowRepairModal] = useState(false);
@@ -1445,8 +1446,10 @@ export function VentasPage() {
     } catch {}
   }, []);
 
-  const subtotal = cart.reduce((acc, item) => acc + item.qty * item.price, 0);
-  const mixedRemaining = Math.max(0, subtotal - cashAmount);
+  const totalVenta = cart.reduce((acc, item) => acc + item.qty * item.price, 0);
+  const subtotalSinImpuesto = totalVenta > 0 ? totalVenta / (1 + ITBIS_RATE) : 0;
+  const itbisTotal = totalVenta - subtotalSinImpuesto;
+  const mixedRemaining = Math.max(0, totalVenta - cashAmount);
   const ncfMap: Record<string, string> = {
     'Consumidor final':
       branchSettingsQuery.data?.feature_flags?.ncf?.consumidor_final?.range_start ??
@@ -1512,8 +1515,9 @@ export function VentasPage() {
             ${cart.map((item) => `<tr><td>${item.description} x${item.qty}</td><td style="text-align:right">RD$ ${(item.qty * item.price).toFixed(2)}</td></tr>`).join('')}
           </table>
           <div class="divider"></div>
-          <div class="row"><span>Subtotal</span><strong>RD$ ${subtotal.toFixed(2)}</strong></div>
-          <div class="row"><span>Total</span><strong>RD$ ${subtotal.toFixed(2)}</strong></div>
+          <div class="row"><span>Subtotal (sin ITBIS)</span><strong>RD$ ${subtotalSinImpuesto.toFixed(2)}</strong></div>
+          <div class="row"><span>ITBIS (18%)</span><strong>RD$ ${itbisTotal.toFixed(2)}</strong></div>
+          <div class="row"><span>Total</span><strong>RD$ ${totalVenta.toFixed(2)}</strong></div>
           <div class="row"><span>Forma de pago</span><strong>${paymentMethod}</strong></div>
           <div class="divider"></div>
           <p class="center">${settings.invoice_footer ?? 'Gracias por su compra.'}</p>
@@ -1526,8 +1530,9 @@ export function VentasPage() {
     printWindow.document.write(invoiceHtml);
     printWindow.document.close();
     printWindow.focus();
-    printWindow.print();
-    printWindow.close();
+    setTimeout(() => {
+      printWindow.print();
+    }, 350);
   };
 
   return (
@@ -1585,11 +1590,11 @@ export function VentasPage() {
           <h3 className="text-2xl font-semibold">🛒 Resumen de compra</h3>
           <p className="text-sm text-slate-500">{cart.length === 0 ? 'El carrito está vacío — selecciona productos arriba' : `${cart.length} línea(s) en carrito`}</p>
           <div className="space-y-1 text-lg">
-            <p className="flex justify-between"><span>Subtotal</span><strong>RD$ {subtotal.toFixed(2)}</strong></p>
-            <p className="flex justify-between"><span>ITBIS</span><strong>RD$ 0.00</strong></p>
+            <p className="flex justify-between"><span>Subtotal (sin ITBIS)</span><strong>RD$ {subtotalSinImpuesto.toFixed(2)}</strong></p>
+            <p className="flex justify-between"><span>ITBIS (18%)</span><strong>RD$ {itbisTotal.toFixed(2)}</strong></p>
             <p className="flex justify-between"><span>Descuento</span><strong>RD$ 0.00</strong></p>
             <hr className="my-2" />
-            <p className="flex justify-between text-2xl"><span>Total</span><strong>RD$ {subtotal.toFixed(2)}</strong></p>
+            <p className="flex justify-between text-2xl"><span>Total</span><strong>RD$ {totalVenta.toFixed(2)}</strong></p>
             <p className="flex justify-between"><span>Balance pendiente</span><strong>RD$ {paymentMethod === 'mixto' ? mixedRemaining.toFixed(2) : '0.00'}</strong></p>
             <p className="flex justify-between"><span>Estado</span><strong>{saleType === 'credito' ? 'Crédito' : 'Contado'}</strong></p>
           </div>
@@ -1642,7 +1647,7 @@ export function VentasPage() {
             ))}
           </tbody>
         </table>
-        <p className="mt-3 text-right font-semibold">Total: RD$ {subtotal.toFixed(2)}</p>
+        <p className="mt-3 text-right font-semibold">Total: RD$ {totalVenta.toFixed(2)}</p>
       </Card>
 
       {showRepairModal ? (
