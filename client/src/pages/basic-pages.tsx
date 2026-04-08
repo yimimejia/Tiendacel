@@ -1429,7 +1429,9 @@ export function VentasPage() {
   const currentNcf = (() => {
     const settings = branchSettingsQuery.data?.feature_flags?.ncf?.[ncfKey];
     const start = String(settings?.current ?? settings?.range_start ?? '');
-    return start || `FAC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+    const end = String(settings?.range_end ?? '');
+    if (start && end) return `${start} - ${end}`;
+    return start || end || `FAC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
   })();
 
   useEffect(() => {
@@ -1448,21 +1450,18 @@ export function VentasPage() {
   const totalVenta = subtotalBruto;
   const mixedRemaining = Math.max(0, totalVenta - cashAmount);
   const ncfMap: Record<string, string> = {
-    'Consumidor final':
-      branchSettingsQuery.data?.feature_flags?.ncf?.consumidor_final?.range_start ??
-      branchSettingsQuery.data?.feature_flags?.ncf?.consumidor_final?.current ??
-      'B02-',
+    'Consumidor final': currentNcf,
     'Crédito fiscal':
-      branchSettingsQuery.data?.feature_flags?.ncf?.credito_fiscal?.range_start ??
       branchSettingsQuery.data?.feature_flags?.ncf?.credito_fiscal?.current ??
+      branchSettingsQuery.data?.feature_flags?.ncf?.credito_fiscal?.range_start ??
       'B01-',
     Gubernamental:
-      branchSettingsQuery.data?.feature_flags?.ncf?.gubernamental?.range_start ??
       branchSettingsQuery.data?.feature_flags?.ncf?.gubernamental?.current ??
+      branchSettingsQuery.data?.feature_flags?.ncf?.gubernamental?.range_start ??
       'B15-',
     'Régimen especial':
-      branchSettingsQuery.data?.feature_flags?.ncf?.regimen_especial?.range_start ??
       branchSettingsQuery.data?.feature_flags?.ncf?.regimen_especial?.current ??
+      branchSettingsQuery.data?.feature_flags?.ncf?.regimen_especial?.range_start ??
       'B14-',
   };
   const visibleProducts = inventoryItems.filter((item) => item.name.toLowerCase().includes(productSearch.toLowerCase()));
@@ -1641,6 +1640,7 @@ export function VentasPage() {
         </Card>
 
         <Card className="p-5 space-y-3 h-fit">
+          <p className="rounded-lg border border-indigo-200 px-3 py-2 text-sm"><strong>Comprobante:</strong> {comprobanteType}</p>
           <p className="rounded-lg border border-indigo-200 px-3 py-2 text-sm"><strong>NCF:</strong> {ncfMap[comprobanteType] ?? '--'}</p>
           <h3 className="text-2xl font-semibold">🛒 Resumen de compra</h3>
             <p className="text-sm text-slate-500">{cart.length === 0 ? 'El carrito está vacío — selecciona productos arriba' : `${cart.length} línea(s) en carrito`}</p>
