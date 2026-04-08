@@ -1178,8 +1178,34 @@ export function VentasPage() {
   const [mixedMethod, setMixedMethod] = useState('tarjeta');
   const [cashAmount, setCashAmount] = useState(0);
   const salesForm = useForm<{ description: string; qty: number; price: number }>({ defaultValues: { description: '', qty: 1, price: 0 } });
-  const repairForm = useForm<{ customer_name: string; customer_phone: string; brand: string; model: string; issue: string; assigned_to?: string; custom_brand?: string; custom_model?: string }>({
-    defaultValues: { customer_name: '', customer_phone: '', brand: '', model: '', issue: '', assigned_to: '', custom_brand: '', custom_model: '' },
+  const repairForm = useForm<{
+    customer_name: string;
+    customer_phone: string;
+    contact_phone: string;
+    brand: string;
+    model: string;
+    issue: string;
+    requires_evaluation: boolean;
+    total: number;
+    advance: number;
+    assigned_to?: string;
+    custom_brand?: string;
+    custom_model?: string;
+  }>({
+    defaultValues: {
+      customer_name: '',
+      customer_phone: '',
+      contact_phone: '',
+      brand: '',
+      model: '',
+      issue: '',
+      requires_evaluation: false,
+      total: 0,
+      advance: 0,
+      assigned_to: '',
+      custom_brand: '',
+      custom_model: '',
+    },
   });
 
   const assignable = useQuery({
@@ -1192,6 +1218,11 @@ export function VentasPage() {
   const brandOptions = Object.keys(DEVICE_MODELS_BY_BRAND);
   const selectedBrand = repairForm.watch('brand');
   const selectedModel = repairForm.watch('model');
+  const requiresEvaluation = repairForm.watch('requires_evaluation');
+  const totalRepair = Number(repairForm.watch('total') ?? 0);
+  const advanceRepair = Number(repairForm.watch('advance') ?? 0);
+  const pendingRepair = Math.max(0, totalRepair - advanceRepair);
+  const repairOrderCode = `${(selectedBrand || 'EQ').slice(0, 2).toUpperCase()}-${String(Date.now()).slice(-6)}`;
   const isPresetBrand = selectedBrand && selectedBrand in DEVICE_MODELS_BY_BRAND;
   const modelsForBrand = isPresetBrand ? DEVICE_MODELS_BY_BRAND[selectedBrand] : [];
   const invoiceNumber = `FAC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
@@ -1278,8 +1309,12 @@ export function VentasPage() {
                 setShowRepairModal(false);
               })}
             >
+              <div className="md:col-span-2 rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-700">
+                Orden de trabajo: <strong>{repairOrderCode}</strong>
+              </div>
               <Input label="Nombre cliente" autoComplete="off" {...repairForm.register('customer_name')} />
               <Input label="Teléfono cliente" autoComplete="off" {...repairForm.register('customer_phone')} />
+              <Input label="Teléfono contacto alterno" autoComplete="off" {...repairForm.register('contact_phone')} />
               <Select label="Marca" {...repairForm.register('brand')}>
                 <option value="">Selecciona marca</option>
                 {brandOptions.map((brand) => <option key={brand} value={brand}>{brand}</option>)}
@@ -1297,6 +1332,25 @@ export function VentasPage() {
               )}
               {selectedModel === 'nuevo' ? <Input label="Nuevo modelo" autoComplete="off" {...repairForm.register('custom_model')} /> : null}
               <Input label="Problema reportado" autoComplete="off" className="md:col-span-2" {...repairForm.register('issue')} />
+              <label className="md:col-span-2 flex items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" {...repairForm.register('requires_evaluation')} />
+                Requiere evaluación (se recibe sin costo inicial)
+              </label>
+              <Input
+                label="Total reparación"
+                type="number"
+                step="0.01"
+                disabled={requiresEvaluation}
+                {...repairForm.register('total', { valueAsNumber: true })}
+              />
+              <Input
+                label="Abono"
+                type="number"
+                step="0.01"
+                disabled={requiresEvaluation}
+                {...repairForm.register('advance', { valueAsNumber: true })}
+              />
+              <Input label="Restante" value={requiresEvaluation ? 'En evaluación' : `RD$ ${pendingRepair.toFixed(2)}`} readOnly />
               <Select label="Asignar a" className="md:col-span-2" {...repairForm.register('assigned_to')}>
                 <option value="">Selecciona empleado</option>
                 {(assignable.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.full_name}</option>)}
