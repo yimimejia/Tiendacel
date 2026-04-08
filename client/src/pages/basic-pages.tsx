@@ -2,7 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useState, forwardRef } from 'react';
+import { useEffect, useState, forwardRef } from 'react';
 import { z } from 'zod';
 import { EmptyState } from '@/components/empty-state';
 import { ErrorState } from '@/components/error-state';
@@ -673,10 +673,33 @@ export function UsuariosPage() {
   const queryClient = useQueryClient();
   const me = useMe();
   const role = me.data?.role ?? '';
+  const [impersonatedBranchId, setImpersonatedBranchId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
-  const list = useQuery({ queryKey: ['users'], queryFn: async () => (await apiRequest<any[]>('/users')).data, staleTime: 30000 });
+  useEffect(() => {
+    const stored = sessionStorage.getItem('impersonatedBranch');
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored) as { branchId?: number };
+      setImpersonatedBranchId(parsed.branchId ?? null);
+    } catch {
+      setImpersonatedBranchId(null);
+    }
+  }, []);
+
+  const isImpersonating = role === 'admin_supremo' && impersonatedBranchId !== null;
+  const effectiveRole = isImpersonating ? 'administrador_general' : role;
+  const effectiveBranchId = isImpersonating ? impersonatedBranchId : (me.data?.branch_id ?? null);
+
+  const list = useQuery({
+    queryKey: ['users', effectiveRole, effectiveBranchId],
+    queryFn: async () => {
+      const query = isImpersonating && effectiveBranchId ? `?branch_id=${effectiveBranchId}` : '';
+      return (await apiRequest<any[]>(`/users${query}`)).data;
+    },
+    staleTime: 30000,
+  });
   const rolesQuery = useQuery({ queryKey: ['roles'], queryFn: async () => (await apiRequest<any[]>('/roles')).data, staleTime: 300000 });
   const branchesQuery = useQuery({ queryKey: ['branches'], queryFn: async () => (await apiRequest<any[]>('/branches')).data, staleTime: 60000 });
 
@@ -720,8 +743,8 @@ export function UsuariosPage() {
 
   const allRoles: any[] = rolesQuery.data ?? [];
   const allBranches: any[] = branchesQuery.data ?? [];
-  const myBranchId = me.data?.branch_id ?? null;
-  const isSupremo = role === 'admin_supremo';
+  const myBranchId = effectiveBranchId;
+  const isSupremo = effectiveRole === 'admin_supremo';
   const visibleBranches = isSupremo ? allBranches : allBranches.filter((b: any) => b.id === myBranchId);
 
   const allowedRoles = isSupremo
