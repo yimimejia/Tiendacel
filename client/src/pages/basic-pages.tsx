@@ -1429,10 +1429,7 @@ export function VentasPage() {
   const currentNcf = (() => {
     const settings = branchSettingsQuery.data?.feature_flags?.ncf?.[ncfKey];
     const start = String(settings?.current ?? settings?.range_start ?? '');
-    const end = String(settings?.range_end ?? '');
-    if (!start && !end) return `FAC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
-    if (start && end) return `${start} - ${end}`;
-    return start || end || `FAC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+    return start || `FAC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
   })();
 
   useEffect(() => {
@@ -1500,22 +1497,6 @@ export function VentasPage() {
       itbis_monto: itbisMonto,
       total_linea: aplica && incluye ? totalLinea : subtotal + itbisMonto,
     };
-  };
-
-  const updateLineQty = (lineId: number, qty: number) => {
-    if (qty <= 0) return;
-    setCart((prev) => prev.map((line) => (line.id === lineId
-      ? buildCartLine({
-        id: line.product_id,
-        code: line.codigo,
-        name: line.nombre,
-        qty,
-        price: line.precio_unitario,
-        itbis_aplica: line.itbis_aplica,
-        itbis_tasa: line.itbis_tasa,
-        precio_incluye_itbis: line.precio_incluye_itbis,
-      })
-      : line)));
   };
 
   const addProductToCart = (product: { id: number; name: string; price: number; sku?: string; itbis_aplica?: boolean; itbis_tasa?: number; precio_incluye_itbis?: boolean; }) => {
@@ -1587,8 +1568,8 @@ export function VentasPage() {
           <p><strong>Vendedor:</strong> ${(seller || me.data?.full_name) ?? ''}</p>
           <div class="divider"></div>
           <table>
-            <tr><th>Cant.</th><th>Precio</th><th>ITBIS</th><th style="text-align:right">Total</th></tr>
-            ${cart.map((item) => `<tr><td>${item.cantidad} ${item.nombre}</td><td>RD$ ${Number(item.precio_unitario ?? 0).toFixed(2)}</td><td>RD$ ${Number(item.itbis_monto ?? 0).toFixed(2)}</td><td style="text-align:right">RD$ ${Number(item.total_linea ?? 0).toFixed(2)}</td></tr>`).join('')}
+            <tr><th>Cant.</th><th style="width:48%">Producto</th><th style="text-align:right">Total</th></tr>
+            ${cart.map((item) => `<tr><td>${item.cantidad}</td><td>${item.nombre}</td><td style="text-align:right">RD$ ${Number(item.total_linea ?? 0).toFixed(2)}</td></tr>`).join('')}
           </table>
           <div class="divider"></div>
           <div class="row"><span>Subtotal (sin ITBIS)</span><strong>RD$ ${subtotalNeto.toFixed(2)}</strong></div>
@@ -1666,21 +1647,12 @@ export function VentasPage() {
           {cart.length > 0 ? (
             <div className="rounded-lg border border-slate-200 p-3 space-y-2 text-sm">
               {cart.map((line) => (
-                <div key={line.id} className="border-b border-slate-100 pb-2 last:border-0">
-                  <p className="font-semibold">{line.nombre}</p>
-                  <p className="text-xs text-slate-500">Código: {line.codigo}</p>
-                  <div className="mt-1 flex items-center gap-2">
-                    <span className="text-xs">Cant.</span>
-                    <input
-                      className="vt-input !w-20 !py-1 text-xs"
-                      type="number"
-                      min={1}
-                      value={line.cantidad}
-                      onChange={(e) => updateLineQty(line.id, Number(e.target.value))}
-                    />
-                    <span className="text-xs">Unit: RD$ {Number(line.precio_unitario ?? 0).toFixed(2)}</span>
+                <div key={line.id} className="border-b border-slate-100 pb-2 last:border-0 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold truncate">{line.nombre}</p>
+                    <p className="text-xs text-slate-500">Cant. {line.cantidad} · RD$ {Number(line.precio_unitario ?? 0).toFixed(2)}</p>
                   </div>
-                  <p className="text-xs">ITBIS: RD$ {Number(line.itbis_monto ?? 0).toFixed(2)} · Total línea: RD$ {Number(line.total_linea ?? 0).toFixed(2)}</p>
+                  <p className="text-sm font-semibold whitespace-nowrap">RD$ {Number(line.total_linea ?? 0).toFixed(2)}</p>
                 </div>
               ))}
             </div>
