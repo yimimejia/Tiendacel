@@ -1274,6 +1274,10 @@ export function VentasPage() {
   const [cashAmount, setCashAmount] = useState(0);
   const [productSearch, setProductSearch] = useState('');
   const [inventoryItems, setInventoryItems] = useState<Array<{ id: number; name: string; price: number; stock: number; photo?: string }>>([]);
+  const [saleType, setSaleType] = useState('contado');
+  const [seller, setSeller] = useState('');
+  const [customerSearch, setCustomerSearch] = useState('PORTADOR');
+  const [comprobanteType, setComprobanteType] = useState('Consumidor final');
   const salesForm = useForm<{ description: string; qty: number; price: number }>({ defaultValues: { description: '', qty: 1, price: 0 } });
   const repairForm = useForm<{
     customer_name: string;
@@ -1335,6 +1339,12 @@ export function VentasPage() {
 
   const subtotal = cart.reduce((acc, item) => acc + item.qty * item.price, 0);
   const mixedRemaining = Math.max(0, subtotal - cashAmount);
+  const ncfMap: Record<string, string> = {
+    'Consumidor final': 'B02-',
+    'Crédito fiscal': 'B01-',
+    Gubernamental: 'B15-',
+    'Régimen especial': 'B14-',
+  };
   const visibleProducts = inventoryItems.filter((item) => item.name.toLowerCase().includes(productSearch.toLowerCase()));
 
   const addProductToCart = (product: { id: number; name: string; price: number }) => {
@@ -1349,31 +1359,72 @@ export function VentasPage() {
 
   return (
     <section className="space-y-5">
-      <PanelTitulo titulo="Sistema de cobro" descripcion="Registro de ventas y recepción de equipos para reparar." />
-      <Card className="p-5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="text-sm text-slate-600">Factura en curso: <span className="font-semibold text-slate-900">{invoiceNumber}</span></div>
-          <Btn onClick={() => setShowRepairModal(true)}>+ Añadir equipo para reparar</Btn>
-        </div>
+      <Card className="p-4 flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-slate-900">POS Vendedor</h2>
+        <Btn variant="soft" onClick={() => setShowRepairModal(true)}>+ Añadir equipo para reparar</Btn>
       </Card>
-      <Card className="p-5 space-y-4">
-        <h3 className="font-semibold text-slate-700">Punto de venta · Selecciona productos</h3>
-        <Input label="Buscar en inventario" placeholder="Busca por nombre..." value={productSearch} onChange={(e) => setProductSearch(e.target.value)} />
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {visibleProducts.map((product) => (
-            <Card key={product.id} className="p-3 border border-slate-200">
-              <div className="h-28 bg-slate-100 rounded-lg mb-2 overflow-hidden flex items-center justify-center">
-                {product.photo ? <img src={product.photo} alt={product.name} className="h-full w-full object-cover" /> : <span className="text-slate-400 text-xs">Sin foto</span>}
-              </div>
-              <p className="font-medium text-sm">{product.name}</p>
-              <p className="text-xs text-slate-500">Stock: {product.stock}</p>
-              <p className="font-semibold text-indigo-700">RD$ {Number(product.price).toFixed(2)}</p>
-              <Btn className="mt-2 w-full" size="sm" onClick={() => addProductToCart(product)}>Agregar</Btn>
-            </Card>
-          ))}
-        </div>
-        {visibleProducts.length === 0 ? <p className="text-sm text-slate-400">No hay productos disponibles en inventario.</p> : null}
-      </Card>
+
+      <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+        <Card className="p-5 space-y-4">
+          <h3 className="text-2xl font-semibold text-slate-800">Punto de venta</h3>
+          <div className="grid gap-3 md:grid-cols-4">
+            <Select label="Tipo" value={saleType} onChange={(e) => setSaleType(e.target.value)}>
+              <option value="contado">Contado</option>
+              <option value="credito">Crédito</option>
+            </Select>
+            <Select label="Vendedor" value={seller} onChange={(e) => setSeller(e.target.value)}>
+              <option value="">Seleccionar...</option>
+              <option value={me.data?.full_name ?? ''}>{me.data?.full_name ?? 'Vendedor actual'}</option>
+            </Select>
+            <Input label="Cliente — buscar por nombre o teléfono" value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)} />
+            <Select label="Forma de pago" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+              <option value="efectivo">Efectivo</option>
+              <option value="transferencia">Transferencia</option>
+              <option value="tarjeta">Tarjeta</option>
+              <option value="mixto">Mixto</option>
+            </Select>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Select label="Tipo de comprobante" value={comprobanteType} onChange={(e) => setComprobanteType(e.target.value)}>
+              {comprobantes.map((item) => <option key={item} value={item}>{item}</option>)}
+            </Select>
+            <Input label="Factura en curso" value={invoiceNumber} readOnly />
+          </div>
+          <Input label="Buscar producto por código, nombre o código de barras..." value={productSearch} onChange={(e) => setProductSearch(e.target.value)} />
+
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {visibleProducts.map((product) => (
+              <Card key={product.id} className="p-3 border border-slate-200">
+                <div className="h-24 bg-slate-100 rounded-lg mb-2 overflow-hidden flex items-center justify-center">
+                  {product.photo ? <img src={product.photo} alt={product.name} className="h-full w-full object-cover" /> : <span className="text-slate-400 text-xs">Sin foto</span>}
+                </div>
+                <p className="font-medium text-sm">{product.name}</p>
+                <p className="text-xs text-slate-500">Stock: {product.stock}</p>
+                <p className="font-semibold text-indigo-700">RD$ {Number(product.price).toFixed(2)}</p>
+                <Btn className="mt-2 w-full" size="sm" onClick={() => addProductToCart(product)}>Agregar</Btn>
+              </Card>
+            ))}
+          </div>
+          {visibleProducts.length === 0 ? <p className="text-sm text-slate-400">No hay productos disponibles en inventario.</p> : null}
+        </Card>
+
+        <Card className="p-5 space-y-3 h-fit">
+          <p className="rounded-lg border border-indigo-200 px-3 py-2 text-sm"><strong>NCF:</strong> {ncfMap[comprobanteType] ?? '--'}</p>
+          <h3 className="text-2xl font-semibold">🛒 Resumen de compra</h3>
+          <p className="text-sm text-slate-500">{cart.length === 0 ? 'El carrito está vacío — selecciona productos arriba' : `${cart.length} línea(s) en carrito`}</p>
+          <div className="space-y-1 text-lg">
+            <p className="flex justify-between"><span>Subtotal</span><strong>RD$ {subtotal.toFixed(2)}</strong></p>
+            <p className="flex justify-between"><span>ITBIS</span><strong>RD$ 0.00</strong></p>
+            <p className="flex justify-between"><span>Descuento</span><strong>RD$ 0.00</strong></p>
+            <hr className="my-2" />
+            <p className="flex justify-between text-2xl"><span>Total</span><strong>RD$ {subtotal.toFixed(2)}</strong></p>
+            <p className="flex justify-between"><span>Balance pendiente</span><strong>RD$ {paymentMethod === 'mixto' ? mixedRemaining.toFixed(2) : '0.00'}</strong></p>
+            <p className="flex justify-between"><span>Estado</span><strong>{saleType === 'credito' ? 'Crédito' : 'Contado'}</strong></p>
+          </div>
+          <Btn className="w-full">✅ Registrar Venta</Btn>
+        </Card>
+      </div>
+
       <Card className="p-5 space-y-4">
         <h3 className="font-semibold text-slate-700">Agregar línea manual (opcional)</h3>
         <form className="grid gap-3 md:grid-cols-4" onSubmit={salesForm.handleSubmit((v) => {
@@ -1385,28 +1436,18 @@ export function VentasPage() {
           <Input label="Precio unitario" type="number" step="0.01" {...salesForm.register('price', { valueAsNumber: true })} />
           <div className="md:pt-6"><Btn type="submit">Agregar</Btn></div>
         </form>
-        <div className="grid gap-3 md:grid-cols-3">
-          <Select label="Comprobante" defaultValue="Consumidor final">
-            {comprobantes.map((item) => <option key={item} value={item}>{item}</option>)}
-          </Select>
-          <Select label="Método de pago" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-            <option value="efectivo">Efectivo</option>
-            <option value="transferencia">Transferencia</option>
-            <option value="tarjeta">Tarjeta</option>
-            <option value="mixto">Mixto</option>
-          </Select>
-          {paymentMethod === 'mixto' ? (
-            <>
-              <Input label="Monto efectivo" type="number" step="0.01" value={cashAmount} onChange={(e) => setCashAmount(Number(e.target.value))} />
-              <Select label="Resto por" value={mixedMethod} onChange={(e) => setMixedMethod(e.target.value)}>
-                <option value="tarjeta">Tarjeta</option>
-                <option value="transferencia">Transferencia</option>
-              </Select>
-              <Input label="Resto pendiente" value={`RD$ ${mixedRemaining.toFixed(2)}`} readOnly />
-            </>
-          ) : null}
-        </div>
+        {paymentMethod === 'mixto' ? (
+          <div className="grid gap-3 md:grid-cols-3">
+            <Input label="Monto efectivo" type="number" step="0.01" value={cashAmount} onChange={(e) => setCashAmount(Number(e.target.value))} />
+            <Select label="Resto por" value={mixedMethod} onChange={(e) => setMixedMethod(e.target.value)}>
+              <option value="tarjeta">Tarjeta</option>
+              <option value="transferencia">Transferencia</option>
+            </Select>
+            <Input label="Resto pendiente" value={`RD$ ${mixedRemaining.toFixed(2)}`} readOnly />
+          </div>
+        ) : null}
       </Card>
+
       <Card className="p-5">
         <h3 className="font-semibold text-slate-700 mb-3">Carrito</h3>
         <table className="w-full text-sm">
