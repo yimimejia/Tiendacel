@@ -47,14 +47,14 @@ export async function listCustomers(query: Record<string, unknown>, user: AuthCo
     filters.push(sql`${customers.fullName} ILIKE ${`%${search}%`} OR ${customers.phone} ILIKE ${`%${search}%`}`);
   }
 
-  if (user.role !== 'administrador_general') {
+  if (user.role !== 'admin_supremo') {
     if (!user.branchId) throw new HttpError(403, 'Usuario sin sucursal asignada');
     filters.push(eq(customers.branchId, user.branchId));
   } else if (branchFilter) {
     filters.push(eq(customers.branchId, branchFilter));
   }
 
-  const where = filters.length ? and(...filters) : undefined;
+  const where = filters.length === 0 ? undefined : (filters.length === 1 ? filters[0] : and(...filters));
 
   const rows = await db.select().from(customers).where(where).orderBy(asc(customers.fullName)).limit(limit).offset(offset);
   const totalResult = await db.select({ count: sql<number>`count(*)` }).from(customers).where(where);

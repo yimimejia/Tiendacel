@@ -106,7 +106,7 @@ export async function listUsers(query: Record<string, unknown>, user: AuthContex
   if (typeof isActive === 'boolean') filters.push(eq(users.isActive, isActive));
   filters.push(...buildScopedFilters(user, branchId));
 
-  const where = filters.length ? and(...filters) : undefined;
+  const where = filters.length === 0 ? undefined : (filters.length === 1 ? filters[0] : and(...filters));
 
   const rows = await db
     .select({
