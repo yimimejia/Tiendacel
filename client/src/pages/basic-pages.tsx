@@ -1425,6 +1425,16 @@ export function VentasPage() {
     if (start && end) return `${start} - ${end}`;
     return start || end || `FAC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
   })();
+  const currentNcf = (() => {
+    const settings = branchSettingsQuery.data?.feature_flags?.ncf?.[(() => {
+      if (comprobanteType === 'Crédito fiscal') return 'credito_fiscal';
+      if (comprobanteType === 'Gubernamental') return 'gubernamental';
+      if (comprobanteType === 'Régimen especial') return 'regimen_especial';
+      return 'consumidor_final';
+    })()];
+    const start = String(settings?.current ?? settings?.range_start ?? '');
+    return start || `FAC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+  })();
 
   useEffect(() => {
     try {
@@ -1465,6 +1475,59 @@ export function VentasPage() {
       }
       return [...prev, { id: Date.now(), description: product.name, qty: 1, price: Number(product.price) }];
     });
+  };
+
+  const handlePrintInvoice = () => {
+    const settings = branchSettingsQuery.data ?? {};
+    const ncfLabel = currentNcf;
+    const invoiceHtml = `
+      <html>
+        <head>
+          <title>Factura</title>
+          <style>
+            body{font-family: Arial, sans-serif; font-size:12px; width:80mm; margin:0; padding:10px;}
+            h1,h2,p{margin:0 0 4px 0;}
+            .center{text-align:center;}
+            .row{display:flex; justify-content:space-between; gap:10px;}
+            .divider{border-top:1px dashed #000; margin:8px 0;}
+            table{width:100%; border-collapse:collapse;}
+            td{vertical-align:top; padding:2px 0;}
+          </style>
+        </head>
+        <body>
+          <div class="center">
+            <h2>${settings.business_name ?? 'Mi Negocio'}</h2>
+            <p>${settings.fiscal_name ?? ''}</p>
+            <p>RNC: ${settings.rnc ?? '-'}</p>
+            <p>${settings.phone ?? ''}</p>
+            <p>${settings.address ?? ''}</p>
+          </div>
+          <div class="divider"></div>
+          <p><strong>NCF:</strong> ${ncfLabel}</p>
+          <p><strong>Comprobante:</strong> ${comprobanteType}</p>
+          <p><strong>Cliente:</strong> ${customerSearch || 'PÚBLICO EN GENERAL'}</p>
+          <p><strong>Vendedor:</strong> ${(seller || me.data?.full_name) ?? ''}</p>
+          <div class="divider"></div>
+          <table>
+            ${cart.map((item) => `<tr><td>${item.description} x${item.qty}</td><td style="text-align:right">RD$ ${(item.qty * item.price).toFixed(2)}</td></tr>`).join('')}
+          </table>
+          <div class="divider"></div>
+          <div class="row"><span>Subtotal</span><strong>RD$ ${subtotal.toFixed(2)}</strong></div>
+          <div class="row"><span>Total</span><strong>RD$ ${subtotal.toFixed(2)}</strong></div>
+          <div class="row"><span>Forma de pago</span><strong>${paymentMethod}</strong></div>
+          <div class="divider"></div>
+          <p class="center">${settings.invoice_footer ?? 'Gracias por su compra.'}</p>
+        </body>
+      </html>
+    `;
+    const printWindow = window.open('', '_blank', 'width=380,height=700');
+    if (!printWindow) return;
+    printWindow.document.open();
+    printWindow.document.write(invoiceHtml);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
   };
 
   return (
@@ -1530,7 +1593,7 @@ export function VentasPage() {
             <p className="flex justify-between"><span>Balance pendiente</span><strong>RD$ {paymentMethod === 'mixto' ? mixedRemaining.toFixed(2) : '0.00'}</strong></p>
             <p className="flex justify-between"><span>Estado</span><strong>{saleType === 'credito' ? 'Crédito' : 'Contado'}</strong></p>
           </div>
-          <Btn className="w-full">✅ Registrar Venta</Btn>
+          <Btn className="w-full" onClick={handlePrintInvoice}>✅ Registrar Venta</Btn>
         </Card>
       </div>
 
