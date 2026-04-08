@@ -48,11 +48,16 @@ export function createApp() {
       return res.sendFile(indexFilePath);
     });
   } else {
-    app.get('/', (_req, res) => {
+    app.get('/', (req, res) => {
+      const acceptsHtml = req.headers.accept?.includes('text/html');
+      if (acceptsHtml) {
+        return res.redirect(env.FRONTEND_URL);
+      }
+
       res.status(200).json({
         success: true,
         message: 'Backend activo. Frontend no compilado aún.',
-        data: { health: '/api/health', docs: 'Ejecuta el build del cliente o configura SERVE_FRONTEND=true' },
+        data: { frontend: env.FRONTEND_URL, health: '/api/health', docs: 'Ejecuta el build del cliente o configura SERVE_FRONTEND=true' },
       });
     });
   }
