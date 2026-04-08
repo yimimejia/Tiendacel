@@ -1452,17 +1452,11 @@ export function VentasPage() {
   const ncfMap: Record<string, string> = {
     'Consumidor final': currentNcf,
     'Crédito fiscal':
-      branchSettingsQuery.data?.feature_flags?.ncf?.credito_fiscal?.current ??
-      branchSettingsQuery.data?.feature_flags?.ncf?.credito_fiscal?.range_start ??
-      'B01-',
+      String(branchSettingsQuery.data?.feature_flags?.ncf?.credito_fiscal?.current ?? branchSettingsQuery.data?.feature_flags?.ncf?.credito_fiscal?.range_start ?? 'B01-'),
     Gubernamental:
-      branchSettingsQuery.data?.feature_flags?.ncf?.gubernamental?.current ??
-      branchSettingsQuery.data?.feature_flags?.ncf?.gubernamental?.range_start ??
-      'B15-',
+      String(branchSettingsQuery.data?.feature_flags?.ncf?.gubernamental?.current ?? branchSettingsQuery.data?.feature_flags?.ncf?.gubernamental?.range_start ?? 'B15-'),
     'Régimen especial':
-      branchSettingsQuery.data?.feature_flags?.ncf?.regimen_especial?.current ??
-      branchSettingsQuery.data?.feature_flags?.ncf?.regimen_especial?.range_start ??
-      'B14-',
+      String(branchSettingsQuery.data?.feature_flags?.ncf?.regimen_especial?.current ?? branchSettingsQuery.data?.feature_flags?.ncf?.regimen_especial?.range_start ?? 'B14-'),
   };
   const visibleProducts = inventoryItems.filter((item) => item.name.toLowerCase().includes(productSearch.toLowerCase()));
 
@@ -1640,7 +1634,6 @@ export function VentasPage() {
         </Card>
 
         <Card className="p-5 space-y-3 h-fit">
-          <p className="rounded-lg border border-indigo-200 px-3 py-2 text-sm"><strong>Comprobante:</strong> {comprobanteType}</p>
           <p className="rounded-lg border border-indigo-200 px-3 py-2 text-sm"><strong>NCF:</strong> {ncfMap[comprobanteType] ?? '--'}</p>
           <h3 className="text-2xl font-semibold">🛒 Resumen de compra</h3>
             <p className="text-sm text-slate-500">{cart.length === 0 ? 'El carrito está vacío — selecciona productos arriba' : `${cart.length} línea(s) en carrito`}</p>
