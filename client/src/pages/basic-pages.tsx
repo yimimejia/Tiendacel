@@ -85,7 +85,6 @@ interface SubscriptionRow {
   paymentDay: number;
   nextDueDate: string;
   notes: string | null;
-  assignedAdmins?: string[];
   isPaused: boolean;
   status: 'rojo' | 'amarillo' | 'verde' | 'pausado';
 }
@@ -187,7 +186,7 @@ const Input = forwardRef<HTMLInputElement, { label?: string; error?: string; cla
     return (
       <div className={`flex flex-col gap-1 ${className}`}>
         {label ? <label className="text-xs font-medium text-slate-600">{label}</label> : null}
-        <input ref={ref} className="vt-input ml-[0px] mr-[0px] pt-[8px] pb-[8px] mt-[-15px] mb-[-15px]" {...props} />
+        <input ref={ref} className="vt-input" {...props} />
         {error ? <p className="text-xs text-red-500">{error}</p> : null}
       </div>
     );
@@ -199,7 +198,7 @@ const Select = forwardRef<HTMLSelectElement, { label?: string; error?: string; c
     return (
       <div className={`flex flex-col gap-1 ${className}`}>
         {label ? <label className="text-xs font-medium text-slate-600">{label}</label> : null}
-        <select ref={ref} className="vt-input ml-[0px] mr-[0px] pt-[8px] pb-[8px] mt-[-15px] mb-[-15px]" {...props}>{children}</select>
+        <select ref={ref} className="vt-input" {...props}>{children}</select>
         {error ? <p className="text-xs text-red-500">{error}</p> : null}
       </div>
     );
@@ -571,7 +570,6 @@ export function SucursalesPage() {
     onSuccess: () => {
       setAssignBranchId(null);
       setAssignUserId(null);
-      queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
     },
   });
 
@@ -649,10 +647,6 @@ export function SucursalesPage() {
                     <p className="font-medium">${Number(sub.monthlyFee).toFixed(2)}</p>
                   </div>
                 </div>
-                <p className="text-xs text-slate-600">
-                  <span className="font-medium">Admin general:</span>{' '}
-                  {(sub.assignedAdmins?.length ?? 0) > 0 ? sub.assignedAdmins?.join(', ') : 'Sin asignar'}
-                </p>
                 <div className="flex flex-wrap gap-1.5 pt-1 border-t border-black/5">
                   <Btn
                     size="sm"
@@ -1345,22 +1339,8 @@ export function InventarioPage() {
 export const MovimientosInventarioPage = () => <Pendiente titulo="Movimientos de inventario" />;
 export const TransferenciasPage = () => <Pendiente titulo="Transferencias" />;
 export function VentasPage() {
-  const ITBIS_RATE = 0.18;
   const me = useMe();
-  const [cart, setCart] = useState<Array<{
-    id: number;
-    product_id: number;
-    codigo: string;
-    nombre: string;
-    cantidad: number;
-    precio_unitario: number;
-    itbis_aplica: boolean;
-    itbis_tasa: number;
-    precio_incluye_itbis: boolean;
-    subtotal: number;
-    itbis_monto: number;
-    total_linea: number;
-  }>>([]);
+  const [cart, setCart] = useState<Array<{ id: number; description: string; qty: number; price: number }>>([]);
   const [showRepairModal, setShowRepairModal] = useState(false);
   const [orderSequence, setOrderSequence] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState('efectivo');
@@ -1459,11 +1439,8 @@ export function VentasPage() {
     } catch {}
   }, []);
 
-  const subtotalBruto = cart.reduce((acc, item) => acc + item.total_linea, 0);
-  const subtotalNeto = cart.reduce((acc, item) => acc + item.subtotal, 0);
-  const itbisTotal = cart.reduce((acc, item) => acc + item.itbis_monto, 0);
-  const totalVenta = subtotalBruto;
-  const mixedRemaining = Math.max(0, totalVenta - cashAmount);
+  const subtotal = cart.reduce((acc, item) => acc + item.qty * item.price, 0);
+  const mixedRemaining = Math.max(0, subtotal - cashAmount);
   const ncfMap: Record<string, string> = {
     'Consumidor final':
       branchSettingsQuery.data?.feature_flags?.ncf?.consumidor_final?.range_start ??
@@ -1484,109 +1461,37 @@ export function VentasPage() {
   };
   const visibleProducts = inventoryItems.filter((item) => item.name.toLowerCase().includes(productSearch.toLowerCase()));
 
-  const buildCartLine = (payload: { id: number; code: string; name: string; qty: number; price: number; itbis_aplica?: boolean; itbis_tasa?: number; precio_incluye_itbis?: boolean; }) => {
-    const tasa = payload.itbis_tasa ?? ITBIS_RATE;
-    const aplica = payload.itbis_aplica ?? true;
-    const incluye = payload.precio_incluye_itbis ?? true;
-    const totalLinea = payload.qty * payload.price;
-    let subtotal = totalLinea;
-    let itbisMonto = 0;
-    if (aplica) {
-      if (incluye) {
-        subtotal = totalLinea / (1 + tasa);
-        itbisMonto = totalLinea - subtotal;
-      } else {
-        subtotal = totalLinea;
-        itbisMonto = totalLinea * tasa;
-      }
-    }
-    return {
-      id: Date.now() + Math.floor(Math.random() * 1000),
-      product_id: payload.id,
-      codigo: payload.code,
-      nombre: payload.name,
-      cantidad: payload.qty,
-      precio_unitario: payload.price,
-      itbis_aplica: aplica,
-      itbis_tasa: tasa,
-      precio_incluye_itbis: incluye,
-      subtotal,
-      itbis_monto: itbisMonto,
-      total_linea: aplica && incluye ? totalLinea : subtotal + itbisMonto,
-    };
-  };
-
-  const updateLineQty = (lineId: number, qty: number) => {
-    if (qty <= 0) return;
-    setCart((prev) => prev.map((line) => (line.id === lineId
-      ? buildCartLine({
-        id: line.product_id,
-        code: line.codigo,
-        name: line.nombre,
-        qty,
-        price: line.precio_unitario,
-        itbis_aplica: line.itbis_aplica,
-        itbis_tasa: line.itbis_tasa,
-        precio_incluye_itbis: line.precio_incluye_itbis,
-      })
-      : line)));
-  };
-
-  const addProductToCart = (product: { id: number; name: string; price: number; sku?: string; itbis_aplica?: boolean; itbis_tasa?: number; precio_incluye_itbis?: boolean; }) => {
+  const addProductToCart = (product: { id: number; name: string; price: number }) => {
     setCart((prev) => {
-      const existing = prev.find((it) => it.product_id === product.id);
+      const existing = prev.find((it) => it.description === product.name);
       if (existing) {
-        return prev.map((it) => (it.product_id === product.id ? buildCartLine({
-          id: it.product_id,
-          code: it.codigo,
-          name: it.nombre,
-          qty: it.cantidad + 1,
-          price: it.precio_unitario,
-          itbis_aplica: it.itbis_aplica,
-          itbis_tasa: it.itbis_tasa,
-          precio_incluye_itbis: it.precio_incluye_itbis,
-        }) : it));
+        return prev.map((it) => (it.description === product.name ? { ...it, qty: it.qty + 1 } : it));
       }
-      return [...prev, buildCartLine({
-        id: product.id,
-        code: product.sku ?? `P-${product.id}`,
-        name: product.name,
-        qty: 1,
-        price: Number(product.price),
-        itbis_aplica: product.itbis_aplica,
-        itbis_tasa: product.itbis_tasa,
-        precio_incluye_itbis: product.precio_incluye_itbis,
-      })];
+      return [...prev, { id: Date.now(), description: product.name, qty: 1, price: Number(product.price) }];
     });
   };
 
   const handlePrintInvoice = () => {
-    if (cart.length === 0) {
-      window.alert('No puedes registrar una venta con el carrito vacío.');
-      return;
-    }
     const settings = branchSettingsQuery.data ?? {};
-    const ncfLabel = currentNcf || ncfMap[comprobanteType] || invoiceNumber;
-    const negocio = settings.business_name || settings.fiscal_name || me.data?.branch_name || 'Mi Negocio';
+    const ncfLabel = currentNcf;
     const invoiceHtml = `
       <html>
         <head>
           <title>Factura</title>
           <style>
-            body{font-family: Arial, sans-serif; font-size:12px; width:80mm; margin:0; padding:10px; font-weight:700;}
-            h1,h2,p{margin:0 0 4px 0; font-weight:700;}
+            body{font-family: Arial, sans-serif; font-size:12px; width:80mm; margin:0; padding:10px;}
+            h1,h2,p{margin:0 0 4px 0;}
             .center{text-align:center;}
             .row{display:flex; justify-content:space-between; gap:10px;}
             .divider{border-top:1px dashed #000; margin:8px 0;}
             table{width:100%; border-collapse:collapse;}
-            td,th{vertical-align:top; padding:2px 0; font-weight:700;}
-            .title{font-size:22px; font-weight:900;}
+            td{vertical-align:top; padding:2px 0;}
           </style>
         </head>
         <body>
           <div class="center">
-            <h2 class="title">${negocio}</h2>
-            <p>${settings.fiscal_name ?? negocio}</p>
+            <h2>${settings.business_name ?? 'Mi Negocio'}</h2>
+            <p>${settings.fiscal_name ?? ''}</p>
             <p>RNC: ${settings.rnc ?? '-'}</p>
             <p>${settings.phone ?? ''}</p>
             <p>${settings.address ?? ''}</p>
@@ -1598,13 +1503,11 @@ export function VentasPage() {
           <p><strong>Vendedor:</strong> ${(seller || me.data?.full_name) ?? ''}</p>
           <div class="divider"></div>
           <table>
-            <tr><th>Cant.</th><th>Precio</th><th>ITBIS</th><th style="text-align:right">Total</th></tr>
-            ${cart.map((item) => `<tr><td>${item.cantidad} ${item.nombre}</td><td>RD$ ${item.precio_unitario.toFixed(2)}</td><td>RD$ ${item.itbis_monto.toFixed(2)}</td><td style="text-align:right">RD$ ${item.total_linea.toFixed(2)}</td></tr>`).join('')}
+            ${cart.map((item) => `<tr><td>${item.description} x${item.qty}</td><td style="text-align:right">RD$ ${(item.qty * item.price).toFixed(2)}</td></tr>`).join('')}
           </table>
           <div class="divider"></div>
-          <div class="row"><span>Subtotal (sin ITBIS)</span><strong>RD$ ${subtotalNeto.toFixed(2)}</strong></div>
-          <div class="row"><span>ITBIS (18%)</span><strong>RD$ ${itbisTotal.toFixed(2)}</strong></div>
-          <div class="row"><span>Total</span><strong>RD$ ${totalVenta.toFixed(2)}</strong></div>
+          <div class="row"><span>Subtotal</span><strong>RD$ ${subtotal.toFixed(2)}</strong></div>
+          <div class="row"><span>Total</span><strong>RD$ ${subtotal.toFixed(2)}</strong></div>
           <div class="row"><span>Forma de pago</span><strong>${paymentMethod}</strong></div>
           <div class="divider"></div>
           <p class="center">${settings.invoice_footer ?? 'Gracias por su compra.'}</p>
@@ -1617,9 +1520,8 @@ export function VentasPage() {
     printWindow.document.write(invoiceHtml);
     printWindow.document.close();
     printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-    }, 350);
+    printWindow.print();
+    printWindow.close();
   };
 
   return (
@@ -1675,35 +1577,13 @@ export function VentasPage() {
         <Card className="p-5 space-y-3 h-fit">
           <p className="rounded-lg border border-indigo-200 px-3 py-2 text-sm"><strong>NCF:</strong> {ncfMap[comprobanteType] ?? '--'}</p>
           <h3 className="text-2xl font-semibold">🛒 Resumen de compra</h3>
-            <p className="text-sm text-slate-500">{cart.length === 0 ? 'El carrito está vacío — selecciona productos arriba' : `${cart.length} línea(s) en carrito`}</p>
-          {cart.length > 0 ? (
-            <div className="rounded-lg border border-slate-200 p-3 space-y-2 text-sm">
-              {cart.map((line) => (
-                <div key={line.id} className="border-b border-slate-100 pb-2 last:border-0">
-                  <p className="font-semibold">{line.nombre}</p>
-                  <p className="text-xs text-slate-500">Código: {line.codigo}</p>
-                  <div className="mt-1 flex items-center gap-2">
-                    <span className="text-xs">Cant.</span>
-                    <input
-                      className="vt-input !w-20 !py-1 text-xs"
-                      type="number"
-                      min={1}
-                      value={line.cantidad}
-                      onChange={(e) => updateLineQty(line.id, Number(e.target.value))}
-                    />
-                    <span className="text-xs">Unit: RD$ {line.precio_unitario.toFixed(2)}</span>
-                  </div>
-                  <p className="text-xs">ITBIS: RD$ {line.itbis_monto.toFixed(2)} · Total línea: RD$ {line.total_linea.toFixed(2)}</p>
-                </div>
-              ))}
-            </div>
-          ) : null}
+          <p className="text-sm text-slate-500">{cart.length === 0 ? 'El carrito está vacío — selecciona productos arriba' : `${cart.length} línea(s) en carrito`}</p>
           <div className="space-y-1 text-lg">
-            <p className="flex justify-between"><span>Subtotal (sin ITBIS)</span><strong>RD$ {subtotalNeto.toFixed(2)}</strong></p>
-            <p className="flex justify-between"><span>ITBIS (18%)</span><strong>RD$ {itbisTotal.toFixed(2)}</strong></p>
+            <p className="flex justify-between"><span>Subtotal</span><strong>RD$ {subtotal.toFixed(2)}</strong></p>
+            <p className="flex justify-between"><span>ITBIS</span><strong>RD$ 0.00</strong></p>
             <p className="flex justify-between"><span>Descuento</span><strong>RD$ 0.00</strong></p>
             <hr className="my-2" />
-            <p className="flex justify-between text-2xl"><span>Total</span><strong>RD$ {totalVenta.toFixed(2)}</strong></p>
+            <p className="flex justify-between text-2xl"><span>Total</span><strong>RD$ {subtotal.toFixed(2)}</strong></p>
             <p className="flex justify-between"><span>Balance pendiente</span><strong>RD$ {paymentMethod === 'mixto' ? mixedRemaining.toFixed(2) : '0.00'}</strong></p>
             <p className="flex justify-between"><span>Estado</span><strong>{saleType === 'credito' ? 'Crédito' : 'Contado'}</strong></p>
           </div>
@@ -1714,16 +1594,7 @@ export function VentasPage() {
       <Card className="p-5 space-y-4">
         <h3 className="font-semibold text-slate-700">Agregar línea manual (opcional)</h3>
         <form className="grid gap-3 md:grid-cols-4" onSubmit={salesForm.handleSubmit((v) => {
-          setCart((prev) => [...prev, buildCartLine({
-            id: Date.now(),
-            code: `MAN-${Date.now()}`,
-            name: v.description,
-            qty: v.qty,
-            price: v.price,
-            itbis_aplica: true,
-            itbis_tasa: ITBIS_RATE,
-            precio_incluye_itbis: true,
-          })]);
+          setCart((prev) => [...prev, { id: Date.now(), ...v }]);
           salesForm.reset({ description: '', qty: 1, price: 0 });
         })}>
           <Input label="Descripción" {...salesForm.register('description')} />
@@ -1741,6 +1612,31 @@ export function VentasPage() {
             <Input label="Resto pendiente" value={`RD$ ${mixedRemaining.toFixed(2)}`} readOnly />
           </div>
         ) : null}
+      </Card>
+
+      <Card className="p-5">
+        <h3 className="font-semibold text-slate-700 mb-3">Carrito</h3>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-slate-500">
+              <th className="pb-2">Descripción</th>
+              <th className="pb-2">Cant.</th>
+              <th className="pb-2">Precio</th>
+              <th className="pb-2">Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cart.map((item) => (
+              <tr key={item.id} className="border-t border-slate-100">
+                <td className="py-2">{item.description}</td>
+                <td className="py-2">{item.qty}</td>
+                <td className="py-2">RD$ {item.price.toFixed(2)}</td>
+                <td className="py-2">RD$ {(item.qty * item.price).toFixed(2)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="mt-3 text-right font-semibold">Total: RD$ {subtotal.toFixed(2)}</p>
       </Card>
 
       {showRepairModal ? (

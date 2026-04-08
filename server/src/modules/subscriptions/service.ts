@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { branches, roles, subscriptionPayments, subscriptions, userBranchAccess, users } from '../../db/schema.js';
+import { branches, subscriptionPayments, subscriptions } from '../../db/schema.js';
 import { HttpError } from '../../utils/http-error.js';
 
 function getPaymentStatus(nextDueDateStr: string, isPaused: boolean): 'rojo' | 'amarillo' | 'verde' | 'pausado' {
@@ -34,27 +34,6 @@ export async function listSubscriptions() {
     .where(eq(branches.isActive, true))
     .orderBy(asc(branches.name));
 
-  const adminRows = await db
-    .select({
-      fullName: users.fullName,
-      usernameOrEmail: users.usernameOrEmail,
-      branchId: sql<number>`coalesce(${userBranchAccess.branchId}, ${users.branchId})`,
-    })
-    .from(users)
-    .innerJoin(roles, eq(roles.id, users.roleId))
-    .leftJoin(userBranchAccess, eq(userBranchAccess.userId, users.id))
-    .where(and(eq(users.isActive, true), eq(roles.name, 'administrador_general')));
-
-  const adminMap = new Map<number, string[]>();
-  for (const row of adminRows) {
-    const branchId = Number(row.branchId);
-    if (!branchId) continue;
-    const label = `${row.fullName} (${row.usernameOrEmail})`;
-    const current = adminMap.get(branchId) ?? [];
-    if (!current.includes(label)) current.push(label);
-    adminMap.set(branchId, current);
-  }
-
   return allBranches.map((r) => ({
     id: r.subId ?? 0,
     branchId: r.id,
@@ -65,7 +44,6 @@ export async function listSubscriptions() {
     paymentDay: r.paymentDay ?? 1,
     nextDueDate: r.nextDueDate ?? null,
     notes: r.notes ?? null,
-    assignedAdmins: adminMap.get(r.id) ?? [],
     isPaused: r.isPaused ?? false,
     status: r.nextDueDate ? getPaymentStatus(r.nextDueDate, r.isPaused ?? false) : ('sin_configurar' as const),
   }));
