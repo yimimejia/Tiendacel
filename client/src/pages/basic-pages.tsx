@@ -1254,12 +1254,12 @@ export function VentasPage() {
         <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
           <Card className="w-full max-w-2xl p-6 space-y-3">
             <h3 className="text-lg font-semibold">Recepción de equipo para reparación</h3>
-            <form className="grid grid-cols-1 md:grid-cols-2 gap-3" onSubmit={repairForm.handleSubmit(() => setShowRepairModal(false))}>
-              <Input label="Nombre cliente" {...repairForm.register('customer_name')} />
-              <Input label="Teléfono cliente" {...repairForm.register('customer_phone')} />
-              <Input label="Marca" {...repairForm.register('brand')} />
-              <Input label="Modelo" {...repairForm.register('model')} />
-              <Input label="Problema reportado" className="md:col-span-2" {...repairForm.register('issue')} />
+            <form autoComplete="off" className="grid grid-cols-1 md:grid-cols-2 gap-3" onSubmit={repairForm.handleSubmit(() => setShowRepairModal(false))}>
+              <Input label="Nombre cliente" autoComplete="off" {...repairForm.register('customer_name')} />
+              <Input label="Teléfono cliente" autoComplete="off" {...repairForm.register('customer_phone')} />
+              <Input label="Marca" autoComplete="off" {...repairForm.register('brand')} />
+              <Input label="Modelo" autoComplete="off" {...repairForm.register('model')} />
+              <Input label="Problema reportado" autoComplete="off" className="md:col-span-2" {...repairForm.register('issue')} />
               <Select label="Asignar a" className="md:col-span-2" {...repairForm.register('assigned_to')}>
                 <option value="">Selecciona empleado</option>
                 {(assignable.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.full_name}</option>)}
