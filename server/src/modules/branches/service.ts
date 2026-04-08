@@ -4,6 +4,21 @@ import { branches, roles, userBranchAccess, users } from '../../db/schema.js';
 import { HttpError } from '../../utils/http-error.js';
 import { parsePagination } from '../../utils/pagination.js';
 
+async function ensureUserBranchAccessTable() {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS user_branch_access (
+      id serial PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES users(id),
+      branch_id integer NOT NULL REFERENCES branches(id),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT uniq_user_branch_access UNIQUE (user_id, branch_id)
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_user_branch_access_user_id ON user_branch_access(user_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_user_branch_access_branch_id ON user_branch_access(branch_id)`);
+}
+
 export async function listBranches(query: Record<string, unknown>, forcedBranchIds?: number[] | null) {
   const { page, limit, offset } = parsePagination(query);
   const search = typeof query.search === 'string' ? query.search : undefined;
@@ -23,6 +38,7 @@ export async function listBranches(query: Record<string, unknown>, forcedBranchI
 }
 
 export async function getAccessibleBranchIdsForUser(userId: number, fallbackBranchId?: number | null) {
+  await ensureUserBranchAccessTable();
   const links = await db
     .select({ branchId: userBranchAccess.branchId })
     .from(userBranchAccess)
@@ -34,6 +50,7 @@ export async function getAccessibleBranchIdsForUser(userId: number, fallbackBran
 }
 
 export async function assignAdminBranchAccess(branchId: number, userId: number) {
+  await ensureUserBranchAccessTable();
   const [user] = await db
     .select({ id: users.id, roleName: roles.name })
     .from(users)
