@@ -112,7 +112,7 @@ const DEVICE_MODELS_BY_BRAND: Record<string, string[]> = {
   vivo: ['X100 Pro', 'V30', 'V29', 'Y100', 'Y36'],
 };
 const INVENTORY_STORAGE_KEY = 'vt_inventory_items';
-type NcfStats = { current: string; rangeEnd: string; used: number; available: number; percentUsed: number };
+type NcfStats = { current: string; rangeStart: string; rangeEnd: string; available: number; percentUsed: number };
 
 function toDigits(value: string) {
   return (value ?? '').replace(/\D/g, '');
@@ -1677,18 +1677,17 @@ export function ConfiguracionPage() {
       phone: source.phone ?? '',
       address: source.address ?? '',
       invoice_footer: source.invoice_footer ?? 'Gracias por su compra.',
-      ncf_cf_current: source.feature_flags?.ncf?.consumidor_final?.current ?? '',
+      ncf_cf_start: source.feature_flags?.ncf?.consumidor_final?.range_start ?? '',
       ncf_cf_end: source.feature_flags?.ncf?.consumidor_final?.range_end ?? '',
-      ncf_cf_used: Number(source.feature_flags?.ncf?.consumidor_final?.used ?? 0),
       ncf_fiscal_current: source.feature_flags?.ncf?.credito_fiscal?.current ?? '',
+      ncf_fiscal_start: source.feature_flags?.ncf?.credito_fiscal?.range_start ?? '',
       ncf_fiscal_end: source.feature_flags?.ncf?.credito_fiscal?.range_end ?? '',
-      ncf_fiscal_used: Number(source.feature_flags?.ncf?.credito_fiscal?.used ?? 0),
       ncf_gov_current: source.feature_flags?.ncf?.gubernamental?.current ?? '',
+      ncf_gov_start: source.feature_flags?.ncf?.gubernamental?.range_start ?? '',
       ncf_gov_end: source.feature_flags?.ncf?.gubernamental?.range_end ?? '',
-      ncf_gov_used: Number(source.feature_flags?.ncf?.gubernamental?.used ?? 0),
       ncf_special_current: source.feature_flags?.ncf?.regimen_especial?.current ?? '',
+      ncf_special_start: source.feature_flags?.ncf?.regimen_especial?.range_start ?? '',
       ncf_special_end: source.feature_flags?.ncf?.regimen_especial?.range_end ?? '',
-      ncf_special_used: Number(source.feature_flags?.ncf?.regimen_especial?.used ?? 0),
     });
   }, [branchSettingsQuery.data, me?.data?.branch_name]);
 
@@ -1704,10 +1703,10 @@ export function ConfiguracionPage() {
         invoice_footer: formState.invoice_footer ?? null,
         feature_flags: {
           ncf: {
-            consumidor_final: { current: formState.ncf_cf_current ?? null, range_end: formState.ncf_cf_end ?? null, used: Number(formState.ncf_cf_used ?? 0) },
-            credito_fiscal: { current: formState.ncf_fiscal_current ?? null, range_end: formState.ncf_fiscal_end ?? null, used: Number(formState.ncf_fiscal_used ?? 0) },
-            gubernamental: { current: formState.ncf_gov_current ?? null, range_end: formState.ncf_gov_end ?? null, used: Number(formState.ncf_gov_used ?? 0) },
-            regimen_especial: { current: formState.ncf_special_current ?? null, range_end: formState.ncf_special_end ?? null, used: Number(formState.ncf_special_used ?? 0) },
+            consumidor_final: { current: formState.ncf_cf_start ?? null, range_start: formState.ncf_cf_start ?? null, range_end: formState.ncf_cf_end ?? null },
+            credito_fiscal: { current: formState.ncf_fiscal_start ?? null, range_start: formState.ncf_fiscal_start ?? null, range_end: formState.ncf_fiscal_end ?? null },
+            gubernamental: { current: formState.ncf_gov_start ?? null, range_start: formState.ncf_gov_start ?? null, range_end: formState.ncf_gov_end ?? null },
+            regimen_especial: { current: formState.ncf_special_start ?? null, range_start: formState.ncf_special_start ?? null, range_end: formState.ncf_special_end ?? null },
           },
         },
       };
@@ -1725,14 +1724,19 @@ export function ConfiguracionPage() {
     { label: 'Crédito fiscal', key: 'ncf_fiscal' },
     { label: 'Gubernamental', key: 'ncf_gov' },
     { label: 'Régimen especial', key: 'ncf_special' },
-  ].map((item) => ({
-    ...item,
-    stats: buildNcfStats(
-      String(formState[`${item.key}_current`] ?? ''),
-      String(formState[`${item.key}_end`] ?? ''),
-      Number(formState[`${item.key}_used`] ?? 0),
-    ),
-  }));
+  ].map((item) => {
+    const current = String(formState[`${item.key}_start`] ?? '');
+    const rangeEnd = String(formState[`${item.key}_end`] ?? '');
+    const stats = buildNcfStats(current, rangeEnd, 0);
+    return {
+      ...item,
+      stats: {
+        ...stats,
+        current,
+        rangeStart: String(formState[`${item.key}_start`] ?? ''),
+      },
+    };
+  });
 
   return (
     <section className="space-y-5">
@@ -1756,26 +1760,21 @@ export function ConfiguracionPage() {
       <Card className="p-5">
         <h3 className="text-sm font-semibold mb-2">NCF</h3>
         <div className="grid gap-4 md:grid-cols-2">
-          <Input label="Consumidor final · NCF actual" value={formState.ncf_cf_current ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_cf_current: e.target.value }))} />
+          <Input label="Consumidor final · Desde" value={formState.ncf_cf_start ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_cf_start: e.target.value }))} />
           <Input label="Consumidor final · NCF final" value={formState.ncf_cf_end ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_cf_end: e.target.value }))} />
-          <Input label="Consumidor final · Usados" type="number" min={0} value={formState.ncf_cf_used ?? 0} onChange={(e) => setFormState((s) => ({ ...s, ncf_cf_used: Number(e.target.value) }))} />
-          <Input label="Crédito fiscal · NCF actual" value={formState.ncf_fiscal_current ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_fiscal_current: e.target.value }))} />
+          <Input label="Crédito fiscal · Desde" value={formState.ncf_fiscal_start ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_fiscal_start: e.target.value }))} />
           <Input label="Crédito fiscal · NCF final" value={formState.ncf_fiscal_end ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_fiscal_end: e.target.value }))} />
-          <Input label="Crédito fiscal · Usados" type="number" min={0} value={formState.ncf_fiscal_used ?? 0} onChange={(e) => setFormState((s) => ({ ...s, ncf_fiscal_used: Number(e.target.value) }))} />
-          <Input label="Gubernamental · NCF actual" value={formState.ncf_gov_current ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_gov_current: e.target.value }))} />
+          <Input label="Gubernamental · Desde" value={formState.ncf_gov_start ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_gov_start: e.target.value }))} />
           <Input label="Gubernamental · NCF final" value={formState.ncf_gov_end ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_gov_end: e.target.value }))} />
-          <Input label="Gubernamental · Usados" type="number" min={0} value={formState.ncf_gov_used ?? 0} onChange={(e) => setFormState((s) => ({ ...s, ncf_gov_used: Number(e.target.value) }))} />
-          <Input label="Régimen especial · NCF actual" value={formState.ncf_special_current ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_special_current: e.target.value }))} />
+          <Input label="Régimen especial · Desde" value={formState.ncf_special_start ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_special_start: e.target.value }))} />
           <Input label="Régimen especial · NCF final" value={formState.ncf_special_end ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_special_end: e.target.value }))} />
-          <Input label="Régimen especial · Usados" type="number" min={0} value={formState.ncf_special_used ?? 0} onChange={(e) => setFormState((s) => ({ ...s, ncf_special_used: Number(e.target.value) }))} />
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           {ncfStatsByType.map((item) => (
             <div key={item.key} className="rounded-lg border border-slate-200 p-3 text-sm">
               <p className="font-semibold text-slate-800">{item.label}</p>
-              <p>NCF actual: <strong>{item.stats.current || '-'}</strong></p>
-              <p>NCF final: <strong>{item.stats.rangeEnd || '-'}</strong></p>
-              <p>Usados: <strong>{item.stats.used}</strong></p>
+              <p>Desde: <strong>{item.stats.rangeStart || '-'}</strong></p>
+              <p>Hasta: <strong>{item.stats.rangeEnd || '-'}</strong></p>
               <p>Disponibles: <strong>{item.stats.available}</strong></p>
               <p>% usado: <strong>{item.stats.percentUsed}%</strong></p>
             </div>
