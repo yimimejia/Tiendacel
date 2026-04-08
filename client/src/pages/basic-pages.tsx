@@ -688,7 +688,7 @@ export function UsuariosPage() {
   const createMutation = useMutation({
     mutationFn: async (v: UserInput) => apiRequest('/users', {
       method: 'POST',
-      body: JSON.stringify({ ...v, password: v.password || undefined, branch_id: v.branch_id || null }),
+      body: JSON.stringify(v),
     }),
     onSuccess: () => {
       createForm.reset();
@@ -700,7 +700,7 @@ export function UsuariosPage() {
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: Partial<UserInput> }) => apiRequest(`/users/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ ...data, branch_id: data.branch_id || null }),
+      body: JSON.stringify(data),
     }),
     onSuccess: () => {
       setEditingId(null);
@@ -722,10 +722,13 @@ export function UsuariosPage() {
 
   const allRoles: any[] = rolesQuery.data ?? [];
   const allBranches: any[] = branchesQuery.data ?? [];
+  const myBranchId = me.data?.branch_id ?? null;
+  const isSupremo = role === 'admin_supremo';
+  const visibleBranches = isSupremo ? allBranches : allBranches.filter((b: any) => b.id === myBranchId);
 
-  const allowedRoles = role === 'admin_supremo'
+  const allowedRoles = isSupremo
     ? allRoles
-    : allRoles.filter((r: any) => !['admin_supremo'].includes(r.name));
+    : allRoles.filter((r: any) => ['encargado_sucursal', 'tecnico', 'caja_ventas'].includes(r.name));
 
   const getBranchName = (branchId: number | null) => {
     if (!branchId) return '-';
@@ -747,6 +750,11 @@ export function UsuariosPage() {
   if (list.error) return <ErrorState message={(list.error as Error).message} />;
 
   const users = list.data ?? [];
+  const normalizeUserPayload = (v: UserInput) => ({
+    ...v,
+    password: v.password || undefined,
+    branch_id: isSupremo ? (v.branch_id || null) : myBranchId,
+  });
 
   return (
     <section className="space-y-5">
@@ -758,7 +766,7 @@ export function UsuariosPage() {
       {showCreate ? (
         <Card className="p-5">
           <h3 className="mb-3 text-sm font-semibold text-slate-700">Crear usuario</h3>
-          <form onSubmit={createForm.handleSubmit((v) => createMutation.mutate(v))} className="grid gap-3 md:grid-cols-2">
+          <form onSubmit={createForm.handleSubmit((v) => createMutation.mutate(normalizeUserPayload(v) as UserInput))} className="grid gap-3 md:grid-cols-2">
             <Input label="Nombre completo" {...createForm.register('full_name')} error={createForm.formState.errors.full_name?.message} />
             <Input label="Usuario / Correo" {...createForm.register('username_or_email')} error={createForm.formState.errors.username_or_email?.message} />
             <Input label="Contraseña (mín. 8 caracteres)" type="password" {...createForm.register('password')} error={createForm.formState.errors.password?.message} />
@@ -766,9 +774,9 @@ export function UsuariosPage() {
               <option value="">Selecciona rol</option>
               {allowedRoles.map((r: any) => <option key={r.id} value={r.id}>{getRoleDisplay(r.name)}</option>)}
             </Select>
-            <Select label="Sucursal" {...createForm.register('branch_id')} error={createForm.formState.errors.branch_id?.message}>
-              <option value="">Sin sucursal (global)</option>
-              {allBranches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            <Select label="Sucursal" defaultValue={isSupremo ? '' : String(myBranchId ?? '')} {...createForm.register('branch_id')} disabled={!isSupremo} error={createForm.formState.errors.branch_id?.message}>
+              {isSupremo ? <option value="">Sin sucursal (global)</option> : null}
+              {visibleBranches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </Select>
             {createMutation.error ? <div className="md:col-span-2"><ErrorState message={(createMutation.error as Error).message} /></div> : null}
             <div className="md:col-span-2 flex gap-2">
@@ -786,16 +794,16 @@ export function UsuariosPage() {
             const u = users.find((u: any) => u.id === editingId);
             if (!u) return null;
             return (
-              <form onSubmit={editForm.handleSubmit((v) => updateMutation.mutate({ id: editingId, data: v }))} className="grid gap-3 md:grid-cols-2">
+              <form onSubmit={editForm.handleSubmit((v) => updateMutation.mutate({ id: editingId, data: normalizeUserPayload(v) }))} className="grid gap-3 md:grid-cols-2">
                 <Input label="Nombre completo" defaultValue={u.full_name} {...editForm.register('full_name')} error={editForm.formState.errors.full_name?.message} />
                 <Input label="Usuario / Correo" defaultValue={u.username_or_email} {...editForm.register('username_or_email')} error={editForm.formState.errors.username_or_email?.message} />
                 <Select label="Rol" defaultValue={u.role_id} {...editForm.register('role_id')} error={editForm.formState.errors.role_id?.message}>
                   <option value="">Selecciona rol</option>
                   {allowedRoles.map((r: any) => <option key={r.id} value={r.id}>{getRoleDisplay(r.name)}</option>)}
                 </Select>
-                <Select label="Sucursal" defaultValue={u.branch_id ?? ''} {...editForm.register('branch_id')} error={editForm.formState.errors.branch_id?.message}>
-                  <option value="">Sin sucursal (global)</option>
-                  {allBranches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                <Select label="Sucursal" defaultValue={u.branch_id ?? (isSupremo ? '' : myBranchId ?? '')} disabled={!isSupremo} {...editForm.register('branch_id')} error={editForm.formState.errors.branch_id?.message}>
+                  {isSupremo ? <option value="">Sin sucursal (global)</option> : null}
+                  {visibleBranches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </Select>
                 {updateMutation.error ? <div className="md:col-span-2"><ErrorState message={(updateMutation.error as Error).message} /></div> : null}
                 <div className="md:col-span-2 flex flex-wrap gap-2">
@@ -1139,6 +1147,7 @@ export function VentasPage() {
   });
 
   const comprobantes = ['Consumidor final', 'Crédito fiscal', 'Gubernamental', 'Régimen especial'];
+  const invoiceNumber = `FAC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
 
   const subtotal = cart.reduce((acc, item) => acc + item.qty * item.price, 0);
   const mixedRemaining = Math.max(0, subtotal - cashAmount);
@@ -1147,7 +1156,8 @@ export function VentasPage() {
     <section className="space-y-5">
       <PanelTitulo titulo="Sistema de cobro" descripcion="Registro de ventas y recepción de equipos para reparar." />
       <Card className="p-5">
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-sm text-slate-600">Factura en curso: <span className="font-semibold text-slate-900">{invoiceNumber}</span></div>
           <Btn onClick={() => setShowRepairModal(true)}>+ Añadir equipo para reparar</Btn>
         </div>
       </Card>
@@ -1252,13 +1262,20 @@ export function ConfiguracionPage() {
   if (settingsQuery.error) return <ErrorState message={(settingsQuery.error as Error).message} />;
 
   const defaults = [
-    { key: 'invoice_business_name', label: 'Nombre del negocio', value: me?.data?.branch_name ?? 'Mi Negocio' },
+    { key: 'invoice_business_name', label: 'Nombre comercial', value: me?.data?.branch_name ?? 'Mi Negocio' },
+    { key: 'invoice_fiscal_name', label: 'Nombre fiscal', value: me?.data?.branch_name ?? 'Mi Negocio SRL' },
+    { key: 'invoice_rnc', label: 'RNC', value: '101000000' },
+    { key: 'invoice_phone', label: 'Teléfono', value: '809-000-0000' },
+    { key: 'invoice_address', label: 'Dirección', value: 'Dirección principal del negocio' },
     { key: 'invoice_header', label: 'Encabezado factura', value: 'RNC 000000000 · Tel: 809-000-0000' },
-    { key: 'invoice_footer', label: 'Pie de factura', value: '¡Gracias por su compra!' },
+    { key: 'invoice_footer', label: 'Pie de factura', value: 'Gracias por su compra.' },
     { key: 'ncf_current', label: 'NCF actual', value: 'B0100000001' },
     { key: 'ncf_range_end', label: 'NCF final del rango', value: 'B0100000500' },
   ];
   const map = new Map((settingsQuery.data ?? []).map((s: any) => [s.key, s]));
+  const getValue = (key: string, fallback: string) => (map.get(key)?.value as string | undefined) ?? fallback;
+  const ncfCurrent = getValue('ncf_current', 'B0100000001');
+  const ncfEnd = getValue('ncf_range_end', 'B0100000500');
 
   return (
     <section className="space-y-5">
@@ -1276,6 +1293,27 @@ export function ConfiguracionPage() {
           />
         </Card>
       )})}
+      <Card className="p-5">
+        <h3 className="text-sm font-semibold mb-2">NCF</h3>
+        <div className="grid gap-2 text-sm md:grid-cols-3">
+          <p><strong>Inicio:</strong> {ncfCurrent}</p>
+          <p><strong>Final:</strong> {ncfEnd}</p>
+          <p><strong>Estado:</strong> Activo</p>
+        </div>
+      </Card>
+      <Card className="p-5">
+        <h3 className="text-sm font-semibold mb-2">Preview factura/ticket</h3>
+        <div className="rounded-lg border border-dashed border-slate-300 p-4 text-sm bg-slate-50">
+          <p className="font-semibold">{getValue('invoice_business_name', 'Mi Negocio')}</p>
+          <p>{getValue('invoice_fiscal_name', 'Mi Negocio SRL')}</p>
+          <p>RNC: {getValue('invoice_rnc', '101000000')}</p>
+          <p>Tel: {getValue('invoice_phone', '809-000-0000')}</p>
+          <p>{getValue('invoice_address', 'Dirección principal del negocio')}</p>
+          <hr className="my-2" />
+          <p>{getValue('invoice_header', '')}</p>
+          <p className="mt-2">{getValue('invoice_footer', 'Gracias por su compra.')}</p>
+        </div>
+      </Card>
     </section>
   );
 }

@@ -7,7 +7,7 @@ import { listSettingsController, upsertSettingController } from './controller.js
 import { upsertSettingSchema } from './schema.js';
 
 const router = Router();
-router.use(authMiddleware, roleMiddleware(['administrador_general']));
+router.use(authMiddleware, roleMiddleware(['administrador_general', 'encargado_sucursal']));
 router.get('/', asyncHandler(listSettingsController));
 router.put('/', validateRequest({ body: upsertSettingSchema }), asyncHandler(upsertSettingController));
 

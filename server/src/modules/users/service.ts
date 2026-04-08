@@ -154,14 +154,21 @@ export async function getUserById(id: number, user: AuthContext) {
 }
 
 const GLOBAL_ROLES = ['administrador_general', 'admin_supremo'];
+const BRANCH_MANAGED_ROLES = ['encargado_sucursal', 'tecnico', 'caja_ventas'];
 
-async function validateRoleAndBranch(roleId: number, branchId: number | null | undefined) {
+async function validateRoleAndBranch(roleId: number, branchId: number | null | undefined, actorRole: string) {
   const [role] = await db.select().from(roles).where(eq(roles.id, roleId)).limit(1);
   if (!role) throw new HttpError(400, 'role_id inválido');
 
   if (!GLOBAL_ROLES.includes(role.name) && !branchId) {
     throw new HttpError(400, 'branch_id es requerido para este rol');
   }
+
+  if (actorRole !== 'admin_supremo' && !BRANCH_MANAGED_ROLES.includes(role.name)) {
+    throw new HttpError(403, 'No puedes asignar este rol');
+  }
+
+  return role;
 }
 
 export async function createUser(input: {
@@ -173,7 +180,7 @@ export async function createUser(input: {
   is_active?: boolean;
 }, user: AuthContext) {
   const targetBranchId = resolveTargetBranch(user, input.branch_id);
-  await validateRoleAndBranch(input.role_id, targetBranchId);
+  await validateRoleAndBranch(input.role_id, targetBranchId, user.role);
 
   const exists = await findUserByUsernameInBranch(input.username_or_email, targetBranchId);
   if (exists) throw new HttpError(409, 'username_or_email ya existe en esta sucursal');
@@ -204,7 +211,7 @@ export async function updateUser(
   const targetBranchId = resolveTargetBranch(user, input.branch_id ?? current.branch_id);
 
   if (input.role_id) {
-    await validateRoleAndBranch(input.role_id, targetBranchId);
+    await validateRoleAndBranch(input.role_id, targetBranchId, user.role);
   }
 
   if (input.username_or_email) {
