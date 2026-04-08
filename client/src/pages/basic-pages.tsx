@@ -100,6 +100,17 @@ interface PaymentRecord {
   createdAt: string;
 }
 
+const DEVICE_MODELS_BY_BRAND: Record<string, string[]> = {
+  Apple: ['iPhone 16 Pro Max', 'iPhone 16 Pro', 'iPhone 16', 'iPhone 15 Pro Max', 'iPhone 15 Pro', 'iPhone 15', 'iPhone 14 Pro Max', 'iPhone 14 Pro', 'iPhone 14', 'iPhone 13 Pro Max', 'iPhone 13', 'iPhone 12', 'iPhone 11', 'iPhone XS Max', 'iPhone XR', 'iPhone X', 'iPhone 8 Plus', 'iPhone 7 Plus', 'iPhone 6s'],
+  Samsung: ['Galaxy S24 Ultra', 'Galaxy S24+', 'Galaxy S24', 'Galaxy S23 Ultra', 'Galaxy S23+', 'Galaxy S23', 'Galaxy S22 Ultra', 'Galaxy S21', 'Galaxy Note 20 Ultra', 'Galaxy A55', 'Galaxy A54', 'Galaxy A34'],
+  Xiaomi: ['Xiaomi 14 Ultra', 'Xiaomi 14', 'Xiaomi 13 Pro', 'Xiaomi 13', 'Redmi Note 13 Pro+', 'Redmi Note 13', 'Redmi Note 12', 'POCO F6 Pro', 'POCO X6 Pro', 'POCO X5'],
+  Huawei: ['Pura 70 Pro', 'P60 Pro', 'Mate 60 Pro', 'Mate 50 Pro', 'nova 12i', 'nova 11'],
+  Motorola: ['Edge 50 Pro', 'Edge 40', 'Moto G84', 'Moto G73', 'Moto G54', 'Moto G Power'],
+  Oppo: ['Find X7 Ultra', 'Reno 11', 'Reno 10', 'A98', 'A78'],
+  realme: ['GT 6', 'GT 5', '12 Pro+', '11 Pro+', 'C67'],
+  vivo: ['X100 Pro', 'V30', 'V29', 'Y100', 'Y36'],
+};
+
 const STATUS_COLORS: Record<string, { bg: string; text: string; label: string }> = {
   rojo: { bg: 'bg-red-100 border-red-400', text: 'text-red-700', label: 'Vencido' },
   amarillo: { bg: 'bg-yellow-100 border-yellow-400', text: 'text-yellow-700', label: 'Próximo' },
@@ -1167,8 +1178,8 @@ export function VentasPage() {
   const [mixedMethod, setMixedMethod] = useState('tarjeta');
   const [cashAmount, setCashAmount] = useState(0);
   const salesForm = useForm<{ description: string; qty: number; price: number }>({ defaultValues: { description: '', qty: 1, price: 0 } });
-  const repairForm = useForm<{ customer_name: string; customer_phone: string; brand: string; model: string; issue: string; assigned_to?: string }>({
-    defaultValues: { customer_name: '', customer_phone: '', brand: '', model: '', issue: '', assigned_to: '' },
+  const repairForm = useForm<{ customer_name: string; customer_phone: string; brand: string; model: string; issue: string; assigned_to?: string; custom_brand?: string; custom_model?: string }>({
+    defaultValues: { customer_name: '', customer_phone: '', brand: '', model: '', issue: '', assigned_to: '', custom_brand: '', custom_model: '' },
   });
 
   const assignable = useQuery({
@@ -1178,6 +1189,11 @@ export function VentasPage() {
   });
 
   const comprobantes = ['Consumidor final', 'Crédito fiscal', 'Gubernamental', 'Régimen especial'];
+  const brandOptions = Object.keys(DEVICE_MODELS_BY_BRAND);
+  const selectedBrand = repairForm.watch('brand');
+  const selectedModel = repairForm.watch('model');
+  const isPresetBrand = selectedBrand && selectedBrand in DEVICE_MODELS_BY_BRAND;
+  const modelsForBrand = isPresetBrand ? DEVICE_MODELS_BY_BRAND[selectedBrand] : [];
   const invoiceNumber = `FAC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
 
   const subtotal = cart.reduce((acc, item) => acc + item.qty * item.price, 0);
@@ -1254,11 +1270,32 @@ export function VentasPage() {
         <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
           <Card className="w-full max-w-2xl p-6 space-y-3">
             <h3 className="text-lg font-semibold">Recepción de equipo para reparación</h3>
-            <form autoComplete="off" className="grid grid-cols-1 md:grid-cols-2 gap-3" onSubmit={repairForm.handleSubmit(() => setShowRepairModal(false))}>
+            <form
+              autoComplete="off"
+              className="grid grid-cols-1 md:grid-cols-2 gap-3"
+              onSubmit={repairForm.handleSubmit(() => {
+                repairForm.reset();
+                setShowRepairModal(false);
+              })}
+            >
               <Input label="Nombre cliente" autoComplete="off" {...repairForm.register('customer_name')} />
               <Input label="Teléfono cliente" autoComplete="off" {...repairForm.register('customer_phone')} />
-              <Input label="Marca" autoComplete="off" {...repairForm.register('brand')} />
-              <Input label="Modelo" autoComplete="off" {...repairForm.register('model')} />
+              <Select label="Marca" {...repairForm.register('brand')}>
+                <option value="">Selecciona marca</option>
+                {brandOptions.map((brand) => <option key={brand} value={brand}>{brand}</option>)}
+                <option value="nuevo">Nuevo</option>
+              </Select>
+              {selectedBrand === 'nuevo' ? <Input label="Nueva marca" autoComplete="off" {...repairForm.register('custom_brand')} /> : null}
+              {isPresetBrand ? (
+                <Select label="Modelo" {...repairForm.register('model')}>
+                  <option value="">Selecciona modelo</option>
+                  {modelsForBrand.map((model) => <option key={model} value={model}>{model}</option>)}
+                  <option value="nuevo">Nuevo</option>
+                </Select>
+              ) : (
+                <Input label="Modelo" autoComplete="off" {...repairForm.register('model')} />
+              )}
+              {selectedModel === 'nuevo' ? <Input label="Nuevo modelo" autoComplete="off" {...repairForm.register('custom_model')} /> : null}
               <Input label="Problema reportado" autoComplete="off" className="md:col-span-2" {...repairForm.register('issue')} />
               <Select label="Asignar a" className="md:col-span-2" {...repairForm.register('assigned_to')}>
                 <option value="">Selecciona empleado</option>
