@@ -3072,8 +3072,8 @@ export function VentasPage() {
       )}
 
       {showRepairModal ? (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
-          <Card className="w-full max-w-2xl p-6 space-y-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-start justify-center p-4 pt-[calc(env(safe-area-inset-top)+1rem)] pb-[calc(env(safe-area-inset-bottom)+1rem)] overflow-y-auto">
+          <Card className="w-full max-w-2xl p-6 space-y-3 max-h-[calc(100dvh-2rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] overflow-y-auto">
             <h3 className="text-lg font-semibold">Recepción de equipo para reparación</h3>
             <form
               autoComplete="off"
