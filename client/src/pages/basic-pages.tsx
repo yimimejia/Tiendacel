@@ -295,9 +295,12 @@ function StatCard({ label, value, color = 'slate' }: { label: string; value: str
   );
 }
 
+const WORKER_ONLY_ROLES = ['mensajero', 'empleado', 'tecnico'];
+
 export function DashboardPage() {
   const me = useMe();
   const role = me.data?.role ?? '';
+  const isWorker = WORKER_ONLY_ROLES.includes(role);
 
   const subscriptions = useQuery({
     queryKey: ['subscriptions'],
@@ -308,8 +311,16 @@ export function DashboardPage() {
 
   const branchStats = useQuery({
     queryKey: ['dashboard-stats'],
-    enabled: role !== 'admin_supremo',
+    enabled: !isWorker && role !== 'admin_supremo',
     queryFn: async () => (await apiRequest<DashboardStats>('/dashboard/stats')).data,
+    staleTime: 30000,
+    refetchInterval: 60000,
+  });
+
+  const myStats = useQuery({
+    queryKey: ['my-stats'],
+    enabled: isWorker,
+    queryFn: async () => (await apiRequest<{ myPending: number; myCompleted: number; myTotal: number }>('/dashboard/my-stats')).data,
     staleTime: 30000,
     refetchInterval: 60000,
   });
@@ -341,6 +352,45 @@ export function DashboardPage() {
           </div>
         )}
         <p className="text-sm text-slate-500">Ve a <strong>Sucursales y Suscripciones</strong> para gestionar pagos.</p>
+      </section>
+    );
+  }
+
+  if (isWorker) {
+    const s = myStats.data;
+    return (
+      <section className="space-y-5">
+        <PanelTitulo titulo={`Bienvenido, ${me.data?.full_name?.split(' ')[0] ?? 'usuario'}`} descripcion="Resumen de tus trabajos asignados." />
+        {myStats.isLoading ? <LoadingState /> : (
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-3">
+            <Card className="p-5 border-l-4 border-l-orange-500">
+              <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Pendientes</p>
+              <p className="text-3xl font-bold text-orange-600">{s?.myPending ?? 0}</p>
+              <p className="text-xs text-slate-400 mt-1">trabajos asignados</p>
+            </Card>
+            <Card className="p-5 border-l-4 border-l-green-500">
+              <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Completados</p>
+              <p className="text-3xl font-bold text-green-600">{s?.myCompleted ?? 0}</p>
+              <p className="text-xs text-slate-400 mt-1">trabajos completados</p>
+            </Card>
+            <Card className="p-5 border-l-4 border-l-blue-500 col-span-2 md:col-span-1">
+              <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Total</p>
+              <p className="text-3xl font-bold text-blue-600">{s?.myTotal ?? 0}</p>
+              <p className="text-xs text-slate-400 mt-1">trabajos en total</p>
+            </Card>
+          </div>
+        )}
+        <Card className="p-5">
+          <p className="text-sm text-slate-600 mb-3">Acceso rápido</p>
+          <div className="flex gap-3 flex-wrap">
+            <a href="/reparaciones" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+              Ver mis trabajos pendientes
+            </a>
+            <a href="/trabajos-completados" className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200">
+              Buscar trabajos completados
+            </a>
+          </div>
+        </Card>
       </section>
     );
   }
@@ -1318,11 +1368,125 @@ export function ReparacionesPage() {
   );
 }
 
+interface RepairInvoiceData {
+  repair: RepairItem;
+  customer: { id: number; full_name: string; phone: string; email: string; address: string } | null;
+  sale: { id: number; sale_number: string; total: string; tax_amount: string; discount_amount: string; payment_method: string; ncf: string | null; created_at: string; cashier_name: string } | null;
+  sale_items: { product_name: string; quantity: string; unit_price: string; subtotal: string }[];
+}
+
+function RepairInvoiceModal({ repairId, onClose }: { repairId: number; onClose: () => void }) {
+  const invoiceQuery = useQuery({
+    queryKey: ['repair-invoice', repairId],
+    queryFn: async () => (await apiRequest<RepairInvoiceData>(`/repairs/${repairId}/invoice`)).data,
+    staleTime: 60000,
+  });
+
+  const data = invoiceQuery.data;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b border-slate-200 px-6 pt-5 pb-4 flex items-center justify-between">
+          <h2 className="font-bold text-slate-800 text-lg">Detalle del trabajo</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold">✕</button>
+        </div>
+        <div className="p-6 space-y-5">
+          {invoiceQuery.isLoading ? <LoadingState /> : invoiceQuery.isError ? <ErrorState message="Error cargando detalle" /> : data && (
+            <>
+              <div className="flex items-start gap-3 flex-wrap">
+                <span className="font-mono text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">{data.repair.repair_number}</span>
+                <RepairStatusBadge status={data.repair.internal_status} />
+              </div>
+
+              <div className="bg-slate-50 rounded-lg p-4 space-y-2">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Equipo</p>
+                <p className="font-semibold text-slate-800 text-base">{data.repair.brand} {data.repair.model}</p>
+                <p className="text-sm text-slate-600">Problema: {data.repair.reported_issue}</p>
+                <p className="text-xs text-slate-400">Recibido: {new Date(data.repair.received_at).toLocaleString('es-DO')}</p>
+                {data.repair.delivered_at && <p className="text-xs text-slate-400">Entregado: {new Date(data.repair.delivered_at).toLocaleString('es-DO')}</p>}
+                {data.repair.technician_name && <p className="text-xs text-slate-400">Técnico: {data.repair.technician_name}</p>}
+              </div>
+
+              {data.customer && (
+                <div className="bg-blue-50 rounded-lg p-4 space-y-2">
+                  <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Cliente</p>
+                  <p className="font-semibold text-slate-800">{data.customer.full_name}</p>
+                  {data.customer.phone && (
+                    <div className="flex items-center gap-2">
+                      <a href={`tel:${data.customer.phone}`} className="text-sm text-blue-600 hover:underline font-medium">
+                        📞 {data.customer.phone}
+                      </a>
+                      <a href={`https://wa.me/1${data.customer.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer"
+                        className="text-xs bg-green-500 text-white px-2 py-0.5 rounded-full hover:bg-green-600">
+                        WhatsApp
+                      </a>
+                    </div>
+                  )}
+                  {data.customer.email && <p className="text-sm text-slate-500">{data.customer.email}</p>}
+                  {data.customer.address && <p className="text-xs text-slate-400">{data.customer.address}</p>}
+                </div>
+              )}
+
+              {data.sale ? (
+                <div className="border border-slate-200 rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Factura</p>
+                    {data.sale.ncf && <span className="text-xs font-mono bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded">{data.sale.ncf}</span>}
+                  </div>
+                  <p className="text-xs text-slate-500">No. {data.sale.sale_number} · {new Date(data.sale.created_at).toLocaleString('es-DO')}</p>
+
+                  {data.sale_items.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs text-slate-500 mb-2">Artículos:</p>
+                      {data.sale_items.map((item, i) => (
+                        <div key={i} className="flex justify-between text-sm">
+                          <span className="text-slate-700">{item.product_name} <span className="text-slate-400">×{item.quantity}</span></span>
+                          <span className="font-medium text-slate-800">RD$ {parseFloat(item.subtotal).toLocaleString('es-DO', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="border-t border-slate-200 pt-2 space-y-1 text-sm">
+                    {parseFloat(data.sale.discount_amount) > 0 && (
+                      <div className="flex justify-between text-slate-500">
+                        <span>Descuento</span>
+                        <span>-RD$ {parseFloat(data.sale.discount_amount).toLocaleString('es-DO', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    )}
+                    {parseFloat(data.sale.tax_amount) > 0 && (
+                      <div className="flex justify-between text-slate-500">
+                        <span>ITBIS</span>
+                        <span>RD$ {parseFloat(data.sale.tax_amount).toLocaleString('es-DO', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-bold text-slate-800">
+                      <span>Total</span>
+                      <span>RD$ {parseFloat(data.sale.total).toLocaleString('es-DO', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <p className="text-xs text-slate-400 capitalize">Pago: {data.sale.payment_method} · Cajero: {data.sale.cashier_name}</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-slate-50 rounded-lg p-4 text-center text-sm text-slate-400 italic">
+                  Sin factura de venta registrada para esta reparación.
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        <div className="border-t border-slate-200 px-6 py-4">
+          <button onClick={onClose} className="w-full py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function TrabajosCompletadosPage() {
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
-
-  const [viewProblem, setViewProblem] = useState<RepairItem | null>(null);
+  const [selectedRepairId, setSelectedRepairId] = useState<number | null>(null);
 
   const completedQuery = useQuery({
     queryKey: ['repairs-completed', query],
@@ -1337,25 +1501,9 @@ export function TrabajosCompletadosPage() {
 
   return (
     <section className="space-y-5">
-      <PanelTitulo titulo="Trabajos completados" descripcion="Busca reparaciones entregadas por nombre, modelo o problema." />
+      <PanelTitulo titulo="Trabajos completados" descripcion="Todos los trabajos entregados. Toca un trabajo para ver su factura y datos del cliente." />
 
-      {viewProblem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setViewProblem(null)}>
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-3" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold text-slate-800 text-lg">Detalle del trabajo</h3>
-            <p className="text-xs text-slate-500 font-mono">Orden: {viewProblem.repair_number}</p>
-            <p className="text-sm"><span className="text-slate-500">Estado:</span> <RepairStatusBadge status={viewProblem.internal_status} /></p>
-            <p className="text-sm"><span className="text-slate-500">Equipo:</span> <strong>{viewProblem.brand} {viewProblem.model}</strong></p>
-            <p className="text-sm"><span className="text-slate-500">Cliente:</span> <strong>{viewProblem.customer_name}</strong> {viewProblem.customer_phone && <span className="text-slate-400">· {viewProblem.customer_phone}</span>}</p>
-            <p className="text-sm"><span className="text-slate-500">Problema reportado:</span></p>
-            <p className="bg-slate-50 rounded-lg p-3 text-sm text-slate-700 whitespace-pre-wrap">{viewProblem.reported_issue}</p>
-            <p className="text-xs text-slate-400">Recibido: {new Date(viewProblem.received_at).toLocaleString('es-DO')}</p>
-            {viewProblem.delivered_at && <p className="text-xs text-slate-400">Entregado: {new Date(viewProblem.delivered_at).toLocaleString('es-DO')}</p>}
-            {viewProblem.technician_name && <p className="text-xs text-slate-400">Responsable: {viewProblem.technician_name}</p>}
-            <button onClick={() => setViewProblem(null)} className="mt-2 w-full py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">Cerrar</button>
-          </div>
-        </div>
-      )}
+      {selectedRepairId && <RepairInvoiceModal repairId={selectedRepairId} onClose={() => setSelectedRepairId(null)} />}
 
       <Card className="p-4">
         <div className="flex gap-2">
@@ -1368,33 +1516,40 @@ export function TrabajosCompletadosPage() {
             Buscar
           </button>
         </div>
-        {query && <p className="mt-2 text-xs text-slate-400">Mostrando resultados para: <strong>{query}</strong></p>}
+        {query && (
+          <div className="flex items-center gap-2 mt-2">
+            <p className="text-xs text-slate-400">Resultados para: <strong>{query}</strong></p>
+            <button onClick={() => { setQuery(''); setSearch(''); }} className="text-xs text-red-500 hover:underline">Limpiar</button>
+          </div>
+        )}
       </Card>
 
       {completedQuery.isLoading ? <LoadingState /> : completedQuery.isError ? <ErrorState message="Error cargando trabajos" /> :
         (completedQuery.data ?? []).length === 0 ? (
-          <EmptyState message={query ? `No se encontraron resultados para "${query}".` : 'Ingresa un término de búsqueda para encontrar trabajos completados.'} />
+          <EmptyState message={query ? `No se encontraron resultados para "${query}".` : 'No hay trabajos completados aún.'} />
         ) : (
           <div className="space-y-3">
             {(completedQuery.data ?? []).map(repair => (
-              <Card key={repair.id} className="p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="space-y-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{repair.repair_number}</span>
-                      <RepairStatusBadge status={repair.internal_status} />
+              <button key={repair.id} onClick={() => setSelectedRepairId(repair.id)} className="w-full text-left">
+                <Card className="p-4 hover:bg-blue-50 hover:border-blue-200 border border-transparent transition-colors cursor-pointer">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{repair.repair_number}</span>
+                        <RepairStatusBadge status={repair.internal_status} />
+                      </div>
+                      <p className="font-semibold text-slate-800">{repair.brand} {repair.model}</p>
+                      <p className="text-sm text-slate-600">
+                        <span className="font-medium">{repair.customer_name}</span>
+                        {repair.customer_phone ? <span className="text-slate-400"> · {repair.customer_phone}</span> : ''}
+                      </p>
+                      <p className="text-xs text-slate-400 truncate">Problema: {repair.reported_issue}</p>
+                      {repair.delivered_at && <p className="text-xs text-slate-400">Entregado: {new Date(repair.delivered_at).toLocaleDateString('es-DO')}</p>}
                     </div>
-                    <p className="font-semibold text-slate-800">{repair.brand} {repair.model}</p>
-                    <p className="text-sm text-slate-600">Cliente: <span className="font-medium">{repair.customer_name}</span>{repair.customer_phone ? ` · ${repair.customer_phone}` : ''}</p>
-                    <p className="text-sm text-slate-500 truncate max-w-xs">Problema: {repair.reported_issue}</p>
-                    {repair.delivered_at && <p className="text-xs text-slate-400">Entregado: {new Date(repair.delivered_at).toLocaleDateString('es-DO')}</p>}
+                    <span className="text-xs text-blue-600 font-medium whitespace-nowrap">Ver factura →</span>
                   </div>
-                  <button onClick={() => setViewProblem(repair)}
-                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200">
-                    Ver detalle
-                  </button>
-                </div>
-              </Card>
+                </Card>
+              </button>
             ))}
           </div>
         )

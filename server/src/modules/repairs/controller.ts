@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { createAuditLog } from '../../services/audit-log.service.js';
 import { sendSuccess } from '../../utils/api-response.js';
-import { assignRepair, getAssignableTechnicians, listRepairsForUser, takeRepairWork, updateRepairStatus } from './service.js';
+import { assignRepair, getAssignableTechnicians, getRepairInvoiceInfo, listAllBranchCompleted, listRepairsForUser, takeRepairWork, updateRepairStatus } from './service.js';
 
 function getRequestUser(req: Request) {
   return {
@@ -20,19 +20,16 @@ export async function listRepairsController(req: Request, res: Response) {
 
 export async function listAllCompletedRepairsController(req: Request, res: Response) {
   const user = getRequestUser(req);
-  const search = (req.query.search as string ?? '').toLowerCase().trim();
-  let data = await listRepairsForUser(user, 'completed');
-  if (search) {
-    data = data.filter(r =>
-      r.customer_name.toLowerCase().includes(search) ||
-      r.brand.toLowerCase().includes(search) ||
-      r.model.toLowerCase().includes(search) ||
-      r.reported_issue.toLowerCase().includes(search) ||
-      r.repair_number.toLowerCase().includes(search) ||
-      r.customer_phone.includes(search),
-    );
-  }
+  const search = (req.query.search as string ?? '').trim();
+  const data = await listAllBranchCompleted(user, search || undefined);
   return sendSuccess(res, 'Trabajos completados obtenidos', data);
+}
+
+export async function getRepairInvoiceController(req: Request, res: Response) {
+  const user = getRequestUser(req);
+  const repairId = Number(req.params.id);
+  const data = await getRepairInvoiceInfo(repairId, user);
+  return sendSuccess(res, 'Información de factura obtenida', data);
 }
 
 export async function listAssignableTechniciansController(req: Request, res: Response) {

@@ -130,6 +130,30 @@ router.get('/reports/sales', asyncHandler(async (req, res) => {
   });
 }));
 
+router.get('/my-stats', asyncHandler(async (req, res) => {
+  const user = (req as any).user;
+  const userId: number = user?.id;
+  const branchId: number | null = user?.branchId ?? null;
+
+  if (!branchId) {
+    res.json({ success: true, data: { myPending: 0, myCompleted: 0, myTotal: 0 } });
+    return;
+  }
+
+  const rows = await db.execute<{ pending: string; completed: string }>(sql`
+    SELECT
+      COUNT(*) FILTER (WHERE internal_status NOT IN ('Entregado', 'Cancelado', 'No reparable')) AS pending,
+      COUNT(*) FILTER (WHERE internal_status IN ('Entregado', 'Cancelado', 'No reparable')) AS completed
+    FROM devices
+    WHERE branch_id = ${branchId} AND technician_id = ${userId}
+  `);
+
+  const row = rows.rows[0];
+  const pending = parseInt(row?.pending ?? '0');
+  const completed = parseInt(row?.completed ?? '0');
+  res.json({ success: true, data: { myPending: pending, myCompleted: completed, myTotal: pending + completed } });
+}));
+
 const inventoryRouter = Router();
 inventoryRouter.use(authMiddleware);
 

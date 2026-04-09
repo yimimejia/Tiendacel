@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, ne, or } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { customers, devices, roles, users } from '../../db/schema.js';
 import { HttpError } from '../../utils/http-error.js';
@@ -71,7 +71,7 @@ function buildBaseQuery() {
     .leftJoin(users, eq(devices.technicianId, users.id));
 }
 
-const BRANCH_ROLES = ['mensajero', 'empleado', 'caja_ventas', 'encargado_sucursal', 'tecnico'];
+const WORKER_ROLES = ['tecnico', 'mensajero', 'empleado'];
 
 export async function listRepairsForUser(user: RequestUser, filter?: 'pending' | 'completed' | 'all') {
   const resolvedFilter = filter ?? 'all';
@@ -79,20 +79,18 @@ export async function listRepairsForUser(user: RequestUser, filter?: 'pending' |
 
   let rows: any[];
 
-  if (user.role === 'administrador_general') {
-    rows = await base.orderBy(desc(devices.receivedAt));
-  } else if (user.role === 'admin_supremo') {
+  if (user.role === 'administrador_general' || user.role === 'admin_supremo') {
     rows = await base.orderBy(desc(devices.receivedAt));
   } else {
     if (!user.branchId) throw new HttpError(403, 'Usuario sin sucursal asignada.');
 
-    if (user.role === 'encargado_sucursal') {
+    if (user.role === 'encargado_sucursal' || user.role === 'caja_ventas') {
       rows = await base.where(eq(devices.branchId, user.branchId)).orderBy(desc(devices.receivedAt));
-    } else if (BRANCH_ROLES.includes(user.role)) {
+    } else if (WORKER_ROLES.includes(user.role)) {
       rows = await base
         .where(and(
           eq(devices.branchId, user.branchId),
-          or(eq(devices.technicianId, user.id), isNull(devices.technicianId)),
+          eq(devices.technicianId, user.id),
         ))
         .orderBy(desc(devices.receivedAt));
     } else {
@@ -105,6 +103,85 @@ export async function listRepairsForUser(user: RequestUser, filter?: 'pending' |
   if (resolvedFilter === 'pending') return all.filter(r => !r.is_completed);
   if (resolvedFilter === 'completed') return all.filter(r => r.is_completed);
   return all;
+}
+
+export async function listAllBranchCompleted(user: RequestUser, search?: string) {
+  const base = buildBaseQuery();
+  let rows: any[];
+
+  if (user.role === 'administrador_general' || user.role === 'admin_supremo') {
+    rows = await base.orderBy(desc(devices.receivedAt));
+  } else {
+    if (!user.branchId) throw new HttpError(403, 'Usuario sin sucursal asignada.');
+    rows = await base.where(eq(devices.branchId, user.branchId)).orderBy(desc(devices.receivedAt));
+  }
+
+  let completed = rows.map(toRepairResponse).filter(r => r.is_completed);
+
+  if (search) {
+    const q = search.toLowerCase();
+    completed = completed.filter(r =>
+      r.customer_name.toLowerCase().includes(q) ||
+      r.brand.toLowerCase().includes(q) ||
+      r.model.toLowerCase().includes(q) ||
+      r.reported_issue.toLowerCase().includes(q) ||
+      r.repair_number.toLowerCase().includes(q) ||
+      r.customer_phone.includes(q),
+    );
+  }
+
+  return completed;
+}
+
+export async function getRepairInvoiceInfo(repairId: number, user: RequestUser) {
+  const [repair] = await db.select().from(devices).where(eq(devices.id, repairId)).limit(1);
+  if (!repair) throw new HttpError(404, 'Reparación no encontrada');
+
+  if (user.role !== 'admin_supremo' && user.role !== 'administrador_general') {
+    if (!user.branchId || repair.branchId !== user.branchId) {
+      throw new HttpError(403, 'No autorizado');
+    }
+  }
+
+  const [customer] = await db.select().from(customers).where(eq(customers.id, repair.customerId)).limit(1);
+
+  const saleRows = await db.execute<{
+    id: number; sale_number: string; total: string; tax_amount: string;
+    discount_amount: string; payment_method: string; ncf: string | null;
+    created_at: string; cashier_name: string;
+  }>(sql`
+    SELECT s.id, s.sale_number, s.total, s.tax_amount, s.discount_amount,
+           s.payment_method, s.ncf, s.created_at,
+           COALESCE(u.full_name, 'Sistema') AS cashier_name
+    FROM sales s
+    LEFT JOIN users u ON u.id = s.cashier_id
+    WHERE s.device_id = ${repair.id}
+    ORDER BY s.created_at DESC
+    LIMIT 1
+  `);
+
+  const sale = saleRows.rows[0] ?? null;
+
+  let saleItems: any[] = [];
+  if (sale) {
+    const itemRows = await db.execute<{
+      product_name: string; quantity: string; unit_price: string; subtotal: string;
+    }>(sql`
+      SELECT COALESCE(p.name, si.product_name) AS product_name,
+             si.quantity, si.unit_price, si.subtotal
+      FROM sale_items si
+      LEFT JOIN products p ON p.id = si.product_id
+      WHERE si.sale_id = ${sale.id}
+    `);
+    saleItems = itemRows.rows;
+  }
+
+  return {
+    repair: toRepairResponse({ ...repair, customerName: customer?.fullName ?? null, customerPhone: customer?.phone ?? null } as any),
+    customer: customer ? { id: customer.id, full_name: customer.fullName, phone: customer.phone, email: customer.email, address: customer.address } : null,
+    sale,
+    sale_items: saleItems,
+  };
 }
 
 export async function getAssignableTechnicians(branchId: number) {

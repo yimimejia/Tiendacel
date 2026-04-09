@@ -67,17 +67,13 @@ const CAJA_MENU: MenuItem[] = [
 ];
 
 const MENSAJERO_MENU: MenuItem[] = [
-  { to: '/dashboard', label: 'Dashboard' },
   { to: '/reparaciones', label: 'Trabajos pendientes' },
   { to: '/trabajos-completados', label: 'Trabajos completados' },
-  { to: '/clientes', label: 'Clientes' },
 ];
 
 const EMPLEADO_MENU: MenuItem[] = [
-  { to: '/dashboard', label: 'Dashboard' },
   { to: '/reparaciones', label: 'Trabajos pendientes' },
   { to: '/trabajos-completados', label: 'Trabajos completados' },
-  { to: '/clientes', label: 'Clientes' },
 ];
 
 function getMenuForRole(role: string): MenuItem[] {
@@ -236,15 +232,6 @@ export function AppLayout() {
             {item.label}
           </NavLink>
         ))}
-        {effectiveRole !== 'admin_supremo' ? (
-          <NavLink
-            to="/consulta-reparacion"
-            onClick={() => setMobileOpen(false)}
-            className="mt-3 rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
-          >
-            Consulta pública
-          </NavLink>
-        ) : null}
       </nav>
       <div className="p-3 border-t border-slate-700">
         <div className="px-3 py-2 text-xs text-slate-400 truncate">{me?.full_name}</div>

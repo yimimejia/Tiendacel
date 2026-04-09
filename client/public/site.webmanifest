@@ -1,10 +1,13 @@
 {
-  "name": "Vibran Tech",
-  "short_name": "Vibran",
+  "name": "FixTrack — Gestión de Reparaciones",
+  "short_name": "FixTrack",
+  "description": "Sistema de gestión para tiendas de reparación de celulares",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f6f8ff",
   "theme_color": "#4f46e5",
+  "orientation": "any",
+  "categories": ["business", "productivity"],
   "icons": [
     {
       "src": "/vibran-repair-logo.svg",

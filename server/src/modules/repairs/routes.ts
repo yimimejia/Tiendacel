@@ -5,6 +5,7 @@ import { validateRequest } from '../../middlewares/validate-request.js';
 import { asyncHandler } from '../../utils/async-handler.js';
 import {
   assignRepairController,
+  getRepairInvoiceController,
   listAllCompletedRepairsController,
   listAssignableTechniciansController,
   listRepairsController,
@@ -26,6 +27,7 @@ router.patch(
   validateRequest({ params: repairIdParamSchema, body: assignRepairSchema }),
   asyncHandler(assignRepairController),
 );
+router.get('/:id/invoice', asyncHandler(getRepairInvoiceController));
 router.patch(
   '/:id/status',
   roleMiddleware(['administrador_general', 'encargado_sucursal', 'tecnico', 'mensajero', 'empleado']),

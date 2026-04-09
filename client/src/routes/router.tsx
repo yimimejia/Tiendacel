@@ -1,5 +1,6 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AppLayout } from '@/app/layout';
+import { useMe } from '@/features/auth/use-auth';
 import {
   AuditoriaPage,
   ClienteDetallePage,
@@ -25,6 +26,15 @@ import {
 } from '@/pages/basic-pages';
 import { ProtectedRoute } from './protected-route';
 
+const WORKER_ROLES = ['mensajero', 'empleado', 'tecnico'];
+
+function DefaultRedirect() {
+  const me = useMe();
+  const role = me.data?.role ?? '';
+  if (WORKER_ROLES.includes(role)) return <Navigate to="/reparaciones" replace />;
+  return <Navigate to="/dashboard" replace />;
+}
+
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   { path: '/consulta-reparacion', element: <ConsultaReparacionPage /> },
@@ -36,7 +46,7 @@ export const router = createBrowserRouter([
       </ProtectedRoute>
     ),
     children: [
-      { index: true, element: <Navigate to="/dashboard" replace /> },
+      { index: true, element: <DefaultRedirect /> },
       { path: '/dashboard', element: <DashboardPage /> },
       { path: '/sucursales', element: <SucursalesPage /> },
       { path: '/usuarios', element: <UsuariosPage /> },
