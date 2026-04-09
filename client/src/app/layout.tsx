@@ -16,6 +16,12 @@ interface ImpersonatedBranch {
   branchCode: string;
 }
 
+interface BranchOption {
+  id: number;
+  name: string;
+  code?: string | null;
+}
+
 const BRANCH_MENU: MenuItem[] = [
   { to: '/dashboard', label: 'Dashboard' },
   { to: '/clientes', label: 'Clientes' },
@@ -212,6 +218,13 @@ export function AppLayout() {
     refetchOnWindowFocus: true,
   });
 
+  const accessibleBranchesQuery = useQuery({
+    queryKey: ['accessible-branches', role, me?.id],
+    enabled: !!me && (role === 'administrador_general' || role === 'admin_supremo'),
+    queryFn: async () => (await apiRequest<BranchOption[]>('/branches')).data ?? [],
+    staleTime: 60000,
+  });
+
   const isPaused = !isSupremo && branchStatusQuery.data?.isPaused === true;
 
   const effectiveRole = isImpersonating ? 'administrador_general' : role;
@@ -219,6 +232,15 @@ export function AppLayout() {
   const sidebarTitle = isImpersonating
     ? impersonated.branchName
     : (isSupremo ? 'Panel Supremo' : ((me as any)?.branch_name ?? 'Mi Sucursal'));
+
+  const adminGeneralBranches = (accessibleBranchesQuery.data ?? []).filter((b) => b.id === (me as any)?.branch_id || isImpersonating || role === 'administrador_general');
+  const visibleBranches = role === 'administrador_general' ? (accessibleBranchesQuery.data ?? []) : [];
+  const [selectedSidebarBranch, setSelectedSidebarBranch] = useState<number | ''>((me as any)?.branch_id ?? '');
+  useEffect(() => {
+    if (selectedSidebarBranch !== '') return;
+    const currentBranch = (me as any)?.branch_id ?? '';
+    if (currentBranch) setSelectedSidebarBranch(currentBranch);
+  }, [me?.id, selectedSidebarBranch]);
 
   const handleExitImpersonation = () => {
     sessionStorage.removeItem('impersonatedBranch');
@@ -237,6 +259,30 @@ export function AppLayout() {
           <p className="mt-0.5 text-xs text-slate-400">
             {isImpersonating ? 'Vista Admin · ' + impersonated.branchCode : getRoleLabel(role)}
           </p>
+          {role === 'administrador_general' && !isImpersonating && visibleBranches.length > 0 && (
+            <div className="mt-3">
+              <select
+                value={selectedSidebarBranch}
+                onChange={(e) => {
+                  const branchId = Number(e.target.value);
+                  setSelectedSidebarBranch(branchId);
+                  window.sessionStorage.setItem('impersonatedBranch', JSON.stringify({
+                    branchId,
+                    branchName: visibleBranches.find((b) => b.id === branchId)?.name ?? `Sucursal ${branchId}`,
+                    branchCode: visibleBranches.find((b) => b.id === branchId)?.code ?? '',
+                  }));
+                  window.location.reload();
+                }}
+                className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-white outline-none"
+              >
+                {visibleBranches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
         <button
           className="md:hidden ml-3 flex-shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
