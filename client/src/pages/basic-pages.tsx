@@ -1273,13 +1273,14 @@ export function ReparacionesPage() {
     return myBranchId;
   };
 
+  const effectiveBranchId = getEffectiveBranchId();
+  const repairsBranchSuffix = effectiveBranchId ? `&branch_id=${effectiveBranchId}` : '';
+
   const repairsQuery = useQuery({
-    queryKey: ['repairs', 'pending'],
-    queryFn: async () => (await apiRequest<RepairItem[]>('/repairs?filter=pending')).data,
+    queryKey: ['repairs', 'pending', effectiveBranchId],
+    queryFn: async () => (await apiRequest<RepairItem[]>(`/repairs?filter=pending${repairsBranchSuffix}`)).data,
     staleTime: 20000,
   });
-
-  const effectiveBranchId = getEffectiveBranchId();
 
   const techniciansQuery = useQuery({
     queryKey: ['repairs-technicians', assignRepairModal?.branch_id ?? effectiveBranchId],
@@ -1573,14 +1574,27 @@ function RepairInvoiceModal({ repairId, onClose }: { repairId: number; onClose: 
 }
 
 export function TrabajosCompletadosPage() {
+  const me = useMe();
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [selectedRepairId, setSelectedRepairId] = useState<number | null>(null);
+  const myBranchId = me.data?.branch_id ?? null;
+
+  const completedBranchId = (() => {
+    try {
+      const stored = sessionStorage.getItem('impersonatedBranch');
+      if (stored) return JSON.parse(stored)?.branchId ?? null;
+    } catch {}
+    return myBranchId;
+  })();
 
   const completedQuery = useQuery({
-    queryKey: ['repairs-completed', query],
+    queryKey: ['repairs-completed', query, completedBranchId],
     queryFn: async () => {
-      const params = query ? `?search=${encodeURIComponent(query)}` : '';
+      const queryParts: string[] = [];
+      if (query) queryParts.push(`search=${encodeURIComponent(query)}`);
+      if (completedBranchId) queryParts.push(`branch_id=${completedBranchId}`);
+      const params = queryParts.length > 0 ? `?${queryParts.join('&')}` : '';
       return (await apiRequest<RepairItem[]>(`/repairs/completed${params}`)).data;
     },
     staleTime: 30000,

@@ -73,14 +73,18 @@ function buildBaseQuery() {
 
 const WORKER_ROLES = ['tecnico', 'mensajero', 'empleado'];
 
-export async function listRepairsForUser(user: RequestUser, filter?: 'pending' | 'completed' | 'all') {
+export async function listRepairsForUser(user: RequestUser, filter?: 'pending' | 'completed' | 'all', branchId?: number) {
   const resolvedFilter = filter ?? 'all';
   const base = buildBaseQuery();
 
   let rows: any[];
 
   if (user.role === 'administrador_general' || user.role === 'admin_supremo') {
-    rows = await base.orderBy(desc(devices.receivedAt));
+    if (branchId) {
+      rows = await base.where(eq(devices.branchId, branchId)).orderBy(desc(devices.receivedAt));
+    } else {
+      rows = await base.orderBy(desc(devices.receivedAt));
+    }
   } else {
     if (!user.branchId) throw new HttpError(403, 'Usuario sin sucursal asignada.');
 
@@ -105,12 +109,16 @@ export async function listRepairsForUser(user: RequestUser, filter?: 'pending' |
   return all;
 }
 
-export async function listAllBranchCompleted(user: RequestUser, search?: string) {
+export async function listAllBranchCompleted(user: RequestUser, search?: string, branchId?: number) {
   const base = buildBaseQuery();
   let rows: any[];
 
   if (user.role === 'administrador_general' || user.role === 'admin_supremo') {
-    rows = await base.orderBy(desc(devices.receivedAt));
+    if (branchId) {
+      rows = await base.where(eq(devices.branchId, branchId)).orderBy(desc(devices.receivedAt));
+    } else {
+      rows = await base.orderBy(desc(devices.receivedAt));
+    }
   } else {
     if (!user.branchId) throw new HttpError(403, 'Usuario sin sucursal asignada.');
     rows = await base.where(eq(devices.branchId, user.branchId)).orderBy(desc(devices.receivedAt));
