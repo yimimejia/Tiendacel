@@ -109,11 +109,24 @@ function PagoPendienteOverlay({ branchName }: { branchName: string }) {
   );
 }
 
+function HamburgerIcon({ open }: { open: boolean }) {
+  return (
+    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      {open ? (
+        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+      ) : (
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+      )}
+    </svg>
+  );
+}
+
 export function AppLayout() {
   const navigate = useNavigate();
   const { data: me } = useMe();
   const logoutMutation = useLogout();
   const [impersonated, setImpersonated] = useState<ImpersonatedBranch | null>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     const stored = sessionStorage.getItem('impersonatedBranch');
@@ -151,84 +164,127 @@ export function AppLayout() {
 
   const branchName = (me as any)?.branch_name ?? 'tu sucursal';
 
+  const sidebarContent = (
+    <div className="flex flex-col h-full">
+      <div className="px-5 py-5 border-b border-slate-700 flex items-center justify-between">
+        <div className="min-w-0">
+          <h1 className="text-lg font-bold tracking-tight text-white truncate">{sidebarTitle}</h1>
+          <p className="mt-0.5 text-xs text-slate-400">
+            {isImpersonating ? 'Vista Admin · ' + impersonated.branchCode : getRoleLabel(role)}
+          </p>
+        </div>
+        <button
+          className="md:hidden ml-3 flex-shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+          onClick={() => setMobileOpen(false)}
+        >
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      {isImpersonating ? (
+        <div className="px-3 pt-3">
+          <button
+            onClick={handleExitImpersonation}
+            className="w-full rounded-lg border border-indigo-500 bg-indigo-900/40 px-3 py-2 text-xs text-indigo-300 hover:bg-indigo-800 transition-colors text-left"
+          >
+            ← Salir de sucursal
+          </button>
+        </div>
+      ) : null}
+      <nav className="flex-1 p-3 flex flex-col gap-0.5 overflow-y-auto">
+        {menu.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            onClick={() => setMobileOpen(false)}
+            className={({ isActive }) =>
+              `rounded-lg px-3 py-2.5 text-sm transition-colors ${
+                isActive
+                  ? 'bg-indigo-600 font-semibold text-white'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              }`
+            }
+          >
+            {item.label}
+          </NavLink>
+        ))}
+        {effectiveRole !== 'admin_supremo' ? (
+          <NavLink
+            to="/consulta-reparacion"
+            onClick={() => setMobileOpen(false)}
+            className="mt-3 rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+          >
+            Consulta pública
+          </NavLink>
+        ) : null}
+      </nav>
+      <div className="p-3 border-t border-slate-700">
+        <div className="px-3 py-2 text-xs text-slate-400 truncate">{me?.full_name}</div>
+        <button
+          onClick={() => logoutMutation.mutate(undefined, { onSuccess: () => navigate('/login') })}
+          className="mt-1 w-full rounded-lg px-3 py-2 text-sm text-left text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+        >
+          Cerrar sesión
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <>
       {isPaused ? <PagoPendienteOverlay branchName={branchName} /> : null}
+
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      <div
+        className={`fixed inset-y-0 left-0 z-50 w-72 bg-slate-900 text-white transform transition-transform duration-300 ease-in-out md:hidden ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {sidebarContent}
+      </div>
+
       <div className="min-h-screen text-slate-900">
-        <div className="grid min-h-screen grid-cols-1 md:grid-cols-[260px_1fr]">
-          <aside className="border-r border-slate-200 bg-slate-900 text-white flex flex-col">
-            <div className="px-5 py-5 border-b border-slate-700">
-              <h1 className="text-lg font-bold tracking-tight text-white truncate">{sidebarTitle}</h1>
-              <p className="mt-0.5 text-xs text-slate-400">
-                {isImpersonating ? 'Vista Admin · ' + impersonated.branchCode : getRoleLabel(role)}
-              </p>
-            </div>
-            {isImpersonating ? (
-              <div className="px-3 pt-3">
-                <button
-                  onClick={handleExitImpersonation}
-                  className="w-full rounded-lg border border-indigo-500 bg-indigo-900/40 px-3 py-2 text-xs text-indigo-300 hover:bg-indigo-800 transition-colors text-left"
-                >
-                  ← Salir de sucursal
-                </button>
-              </div>
-            ) : null}
-            <nav className="flex-1 p-3 flex flex-col gap-0.5 overflow-y-auto">
-              {menu.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  className={({ isActive }) =>
-                    `rounded-lg px-3 py-2.5 text-sm transition-colors ${
-                      isActive
-                        ? 'bg-indigo-600 font-semibold text-white'
-                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                    }`
-                  }
-                >
-                  {item.label}
-                </NavLink>
-              ))}
-              {effectiveRole !== 'admin_supremo' ? (
-                <NavLink
-                  to="/consulta-reparacion"
-                  className="mt-3 rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
-                >
-                  Consulta pública
-                </NavLink>
-              ) : null}
-            </nav>
-            <div className="p-3 border-t border-slate-700">
-              <div className="px-3 py-2 text-xs text-slate-400 truncate">{me?.full_name}</div>
-              <button
-                onClick={() => logoutMutation.mutate(undefined, { onSuccess: () => navigate('/login') })}
-                className="mt-1 w-full rounded-lg px-3 py-2 text-sm text-left text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
-              >
-                Cerrar sesión
-              </button>
-            </div>
+        <div className="grid min-h-screen md:grid-cols-[260px_1fr]">
+          <aside className="hidden md:flex flex-col border-r border-slate-200 bg-slate-900 text-white">
+            {sidebarContent}
           </aside>
 
           <div className="flex flex-col min-h-screen">
             {isImpersonating ? (
-              <div className="bg-indigo-700 px-6 py-2 text-xs text-indigo-100 flex items-center justify-between">
+              <div className="bg-indigo-700 px-4 py-2 text-xs text-indigo-100 flex items-center justify-between">
                 <span>Estás viendo el panel de <strong>{impersonated.branchName}</strong> como administrador</span>
-                <button onClick={handleExitImpersonation} className="underline hover:text-white">Salir</button>
+                <button onClick={handleExitImpersonation} className="underline hover:text-white ml-4 flex-shrink-0">Salir</button>
               </div>
             ) : null}
-            <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-6 py-3">
+            <header className="sticky top-0 z-30 border-b border-slate-200 bg-white px-4 py-3">
               <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">{me?.full_name}</p>
-                  <p className="text-xs text-slate-500">
-                    {getRoleLabel(role)}
-                    {isImpersonating ? ` · ${impersonated.branchName}` : ((me as any)?.branch_name ? ` · ${(me as any).branch_name}` : '')}
-                  </p>
+                <div className="flex items-center gap-3">
+                  <button
+                    className="md:hidden rounded-lg p-2 text-slate-600 hover:bg-slate-100 transition-colors"
+                    onClick={() => setMobileOpen(true)}
+                    aria-label="Abrir menú"
+                  >
+                    <HamburgerIcon open={false} />
+                  </button>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{me?.full_name}</p>
+                    <p className="text-xs text-slate-500">
+                      {getRoleLabel(role)}
+                      {isImpersonating ? ` · ${impersonated.branchName}` : ((me as any)?.branch_name ? ` · ${(me as any).branch_name}` : '')}
+                    </p>
+                  </div>
                 </div>
               </div>
             </header>
 
-            <main className="flex-1 p-6 bg-slate-50">
+            <main className="flex-1 p-4 md:p-6 bg-slate-50">
               <Outlet />
             </main>
           </div>

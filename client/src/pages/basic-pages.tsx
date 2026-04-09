@@ -1393,6 +1393,8 @@ export function VentasPage() {
   const [paymentMethod, setPaymentMethod] = useState('efectivo');
   const [mixedMethod, setMixedMethod] = useState('tarjeta');
   const [cashAmount, setCashAmount] = useState(0);
+  const [showPayModal, setShowPayModal] = useState(false);
+  const [receivedAmount, setReceivedAmount] = useState(0);
   const [productSearch, setProductSearch] = useState('');
   const [saleType, setSaleType] = useState('contado');
   const [seller, setSeller] = useState('');
@@ -1646,7 +1648,12 @@ export function VentasPage() {
           <div class="row"><span>Subtotal (sin ITBIS)</span><strong>RD$ ${subtotalNeto.toFixed(2)}</strong></div>
           <div class="row"><span>ITBIS (18%)</span><strong>RD$ ${itbisTotal.toFixed(2)}</strong></div>
           <div class="row"><span>Total</span><strong>RD$ ${totalVenta.toFixed(2)}</strong></div>
-          <div class="row"><span>Forma de pago</span><strong>${paymentMethod}</strong></div>
+          ${paymentMethod === 'mixto'
+            ? `<div class="row"><span>Efectivo</span><strong>RD$ ${cashAmount.toFixed(2)}</strong></div>
+               <div class="row"><span>${mixedMethod.charAt(0).toUpperCase() + mixedMethod.slice(1)}</span><strong>RD$ ${mixedRemaining.toFixed(2)}</strong></div>`
+            : `<div class="row"><span>Forma de pago</span><strong>${paymentMethod.charAt(0).toUpperCase() + paymentMethod.slice(1)}</strong></div>
+               ${receivedAmount > 0 ? `<div class="row"><span>Recibido</span><strong>RD$ ${receivedAmount.toFixed(2)}</strong></div><div class="row"><span>Vuelto</span><strong>RD$ ${Math.max(0, receivedAmount - totalVenta).toFixed(2)}</strong></div>` : ''}`
+          }
           <div class="divider"></div>
           <p class="center">${settings.invoice_footer ?? 'Gracias por su compra.'}</p>
         </body>
@@ -1661,6 +1668,8 @@ export function VentasPage() {
     setTimeout(() => printWindow.print(), 350);
     setCart([]);
     setComprobanteType('B02');
+    setCashAmount(0);
+    setReceivedAmount(0);
     queryClient.invalidateQueries({ queryKey: ['ncf-sequences', posBranchId] });
   };
 
@@ -1675,7 +1684,7 @@ export function VentasPage() {
         <Card className="p-5 space-y-4">
           <h3 className="text-2xl font-semibold text-slate-800">Punto de venta</h3>
           <div className="grid gap-3 md:grid-cols-4">
-            <Select label="Tipo" value={saleType} onChange={(e) => setSaleType(e.target.value)}>
+            <Select label="Tipo de venta" value={saleType} onChange={(e) => setSaleType(e.target.value)}>
               <option value="contado">Contado</option>
               <option value="credito">Crédito</option>
             </Select>
@@ -1688,9 +1697,31 @@ export function VentasPage() {
               <option value="efectivo">Efectivo</option>
               <option value="transferencia">Transferencia</option>
               <option value="tarjeta">Tarjeta</option>
-              <option value="mixto">Mixto</option>
+              <option value="mixto">Mixto (efectivo + otra forma)</option>
             </Select>
           </div>
+          {paymentMethod === 'mixto' && (
+            <div className="grid gap-3 sm:grid-cols-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3">
+              <Input
+                label="Monto pagado en efectivo"
+                type="number"
+                step="0.01"
+                min={0}
+                value={cashAmount}
+                onChange={(e) => setCashAmount(Number(e.target.value))}
+              />
+              <Select label="El resto fue pagado por" value={mixedMethod} onChange={(e) => setMixedMethod(e.target.value)}>
+                <option value="tarjeta">Tarjeta</option>
+                <option value="transferencia">Transferencia</option>
+              </Select>
+              <div className="flex flex-col justify-end">
+                <p className="text-xs text-slate-500 mb-1">Resto por {mixedMethod}</p>
+                <p className="rounded-lg border border-indigo-300 bg-white px-3 py-2 font-bold text-indigo-700">
+                  RD$ {mixedRemaining.toFixed(2)}
+                </p>
+              </div>
+            </div>
+          )}
           <div className="grid gap-3 md:grid-cols-2">
             <Select label="Tipo de comprobante" value={comprobanteType} onChange={(e) => setComprobanteType(e.target.value)}>
               {ALL_NCF_TYPES.map((t) => {
@@ -1752,7 +1783,16 @@ export function VentasPage() {
             <p className="flex justify-between"><span>Balance pendiente</span><strong>RD$ {paymentMethod === 'mixto' ? mixedRemaining.toFixed(2) : '0.00'}</strong></p>
             <p className="flex justify-between"><span>Estado</span><strong>{saleType === 'credito' ? 'Crédito' : 'Contado'}</strong></p>
           </div>
-          <Btn className="w-full" onClick={handlePrintInvoice}>✅ Registrar Venta</Btn>
+          <Btn
+            className="w-full"
+            onClick={() => {
+              if (cart.length === 0) { window.alert('El carrito está vacío.'); return; }
+              setReceivedAmount(paymentMethod === 'mixto' ? cashAmount : 0);
+              setShowPayModal(true);
+            }}
+          >
+            ✅ Registrar Venta
+          </Btn>
         </Card>
       </div>
 
@@ -1776,17 +1816,78 @@ export function VentasPage() {
           <Input label="Precio unitario" type="number" step="0.01" {...salesForm.register('price', { valueAsNumber: true })} />
           <div className="md:pt-6"><Btn type="submit">Agregar</Btn></div>
         </form>
-        {paymentMethod === 'mixto' ? (
-          <div className="grid gap-3 md:grid-cols-3">
-            <Input label="Monto efectivo" type="number" step="0.01" value={cashAmount} onChange={(e) => setCashAmount(Number(e.target.value))} />
-            <Select label="Resto por" value={mixedMethod} onChange={(e) => setMixedMethod(e.target.value)}>
-              <option value="tarjeta">Tarjeta</option>
-              <option value="transferencia">Transferencia</option>
-            </Select>
-            <Input label="Resto pendiente" value={`RD$ ${mixedRemaining.toFixed(2)}`} readOnly />
-          </div>
-        ) : null}
       </Card>
+
+      {showPayModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-5">
+            <h3 className="text-xl font-bold text-slate-900">Confirmar cobro</h3>
+            <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2 text-sm">
+              <div className="flex justify-between text-slate-600"><span>Subtotal (sin ITBIS)</span><span>RD$ {subtotalNeto.toFixed(2)}</span></div>
+              <div className="flex justify-between text-slate-600"><span>ITBIS</span><span>RD$ {itbisTotal.toFixed(2)}</span></div>
+              <div className="border-t border-slate-200 pt-2 flex justify-between text-lg font-bold text-slate-900">
+                <span>Total a cobrar</span><span>RD$ {totalVenta.toFixed(2)}</span>
+              </div>
+              {paymentMethod === 'mixto' && (
+                <div className="border-t border-slate-200 pt-2 space-y-1 text-xs text-slate-500">
+                  <div className="flex justify-between"><span>Efectivo</span><span>RD$ {cashAmount.toFixed(2)}</span></div>
+                  <div className="flex justify-between"><span>{mixedMethod.charAt(0).toUpperCase() + mixedMethod.slice(1)}</span><span>RD$ {mixedRemaining.toFixed(2)}</span></div>
+                </div>
+              )}
+            </div>
+            {paymentMethod !== 'mixto' && (
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-slate-700">
+                  ¿Con cuánto paga el cliente?
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  value={receivedAmount || ''}
+                  onChange={(e) => setReceivedAmount(Number(e.target.value))}
+                  placeholder="0.00"
+                  className="w-full rounded-xl border-2 border-slate-300 px-4 py-3 text-2xl font-bold text-slate-900 focus:border-indigo-500 focus:outline-none"
+                  autoFocus
+                />
+              </div>
+            )}
+            {paymentMethod !== 'mixto' && receivedAmount > 0 && (
+              <div className={`rounded-xl p-4 text-center ${receivedAmount >= totalVenta ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                {receivedAmount >= totalVenta ? (
+                  <>
+                    <p className="text-xs text-green-600 font-medium uppercase tracking-wide mb-1">Vuelto a entregar</p>
+                    <p className="text-4xl font-black text-green-700">RD$ {(receivedAmount - totalVenta).toFixed(2)}</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs text-red-600 font-medium uppercase tracking-wide mb-1">Falta por pagar</p>
+                    <p className="text-4xl font-black text-red-700">RD$ {(totalVenta - receivedAmount).toFixed(2)}</p>
+                  </>
+                )}
+              </div>
+            )}
+            <div className="flex gap-3 pt-1">
+              <button
+                className="flex-1 rounded-xl border border-slate-300 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                onClick={() => setShowPayModal(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                className="flex-1 rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                disabled={paymentMethod !== 'mixto' && receivedAmount < totalVenta}
+                onClick={async () => {
+                  setShowPayModal(false);
+                  await handlePrintInvoice();
+                }}
+              >
+                Confirmar y Registrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showRepairModal ? (
         <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
