@@ -78,8 +78,9 @@ export async function listRepairsForUser(user: RequestUser, filter?: 'pending' |
   const base = buildBaseQuery();
 
   let rows: any[];
+  const isGlobalAdmin = user.role === 'administrador_general' || user.role === 'admin_supremo';
 
-  if (user.role === 'administrador_general' || user.role === 'admin_supremo') {
+  if (isGlobalAdmin) {
     if (branchId) {
       rows = await base.where(eq(devices.branchId, branchId)).orderBy(desc(devices.receivedAt));
     } else {
@@ -87,13 +88,17 @@ export async function listRepairsForUser(user: RequestUser, filter?: 'pending' |
     }
   } else {
     if (!user.branchId) throw new HttpError(403, 'Usuario sin sucursal asignada.');
+    if (branchId && branchId !== user.branchId) {
+      throw new HttpError(403, 'No puedes consultar reparaciones de otra sucursal');
+    }
+    const scopedBranchId = branchId ?? user.branchId;
 
     if (user.role === 'encargado_sucursal' || user.role === 'caja_ventas') {
-      rows = await base.where(eq(devices.branchId, user.branchId)).orderBy(desc(devices.receivedAt));
+      rows = await base.where(eq(devices.branchId, scopedBranchId)).orderBy(desc(devices.receivedAt));
     } else if (WORKER_ROLES.includes(user.role)) {
       rows = await base
         .where(and(
-          eq(devices.branchId, user.branchId),
+          eq(devices.branchId, scopedBranchId),
           eq(devices.technicianId, user.id),
         ))
         .orderBy(desc(devices.receivedAt));
@@ -112,8 +117,9 @@ export async function listRepairsForUser(user: RequestUser, filter?: 'pending' |
 export async function listAllBranchCompleted(user: RequestUser, search?: string, branchId?: number) {
   const base = buildBaseQuery();
   let rows: any[];
+  const isGlobalAdmin = user.role === 'administrador_general' || user.role === 'admin_supremo';
 
-  if (user.role === 'administrador_general' || user.role === 'admin_supremo') {
+  if (isGlobalAdmin) {
     if (branchId) {
       rows = await base.where(eq(devices.branchId, branchId)).orderBy(desc(devices.receivedAt));
     } else {
@@ -121,7 +127,11 @@ export async function listAllBranchCompleted(user: RequestUser, search?: string,
     }
   } else {
     if (!user.branchId) throw new HttpError(403, 'Usuario sin sucursal asignada.');
-    rows = await base.where(eq(devices.branchId, user.branchId)).orderBy(desc(devices.receivedAt));
+    if (branchId && branchId !== user.branchId) {
+      throw new HttpError(403, 'No puedes consultar reparaciones de otra sucursal');
+    }
+    const scopedBranchId = branchId ?? user.branchId;
+    rows = await base.where(eq(devices.branchId, scopedBranchId)).orderBy(desc(devices.receivedAt));
   }
 
   let completed = rows.map(toRepairResponse).filter(r => r.is_completed);

@@ -30,24 +30,18 @@ export async function createRepairController(req: Request, res: Response) {
 export async function listRepairsController(req: Request, res: Response) {
   const user = getRequestUser(req);
   const filter = req.query.filter as 'pending' | 'completed' | 'all' | undefined;
-  const branchId = req.query.branch_id ? Number(req.query.branch_id) : undefined;
-  const effectiveBranchId =
-    (user.role === 'administrador_general' || user.role === 'admin_supremo')
-      ? branchId
-      : undefined;
-  const data = await listRepairsForUser(user, filter, effectiveBranchId);
+  const rawBranchId = req.query.branch_id ? Number(req.query.branch_id) : undefined;
+  const branchId = rawBranchId && rawBranchId > 0 ? rawBranchId : undefined;
+  const data = await listRepairsForUser(user, filter, branchId);
   return sendSuccess(res, 'Reparaciones obtenidas correctamente', data);
 }
 
 export async function listAllCompletedRepairsController(req: Request, res: Response) {
   const user = getRequestUser(req);
   const search = (req.query.search as string ?? '').trim();
-  const branchId = req.query.branch_id ? Number(req.query.branch_id) : undefined;
-  const effectiveBranchId =
-    (user.role === 'administrador_general' || user.role === 'admin_supremo')
-      ? branchId
-      : undefined;
-  const data = await listAllBranchCompleted(user, search || undefined, effectiveBranchId);
+  const rawBranchId = req.query.branch_id ? Number(req.query.branch_id) : undefined;
+  const branchId = rawBranchId && rawBranchId > 0 ? rawBranchId : undefined;
+  const data = await listAllBranchCompleted(user, search || undefined, branchId);
   return sendSuccess(res, 'Trabajos completados obtenidos', data);
 }
 
