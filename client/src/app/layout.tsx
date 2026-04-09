@@ -165,6 +165,7 @@ export function AppLayout() {
   const [impersonated, setImpersonated] = useState<ImpersonatedBranch | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const sseRef = useRef<EventSource | null>(null);
+  const [activeBranch, setActiveBranch] = useState<BranchOption | null>(null);
 
   useEffect(() => {
     const stored = sessionStorage.getItem('impersonatedBranch');
@@ -232,15 +233,17 @@ export function AppLayout() {
   const sidebarTitle = isImpersonating
     ? impersonated.branchName
     : (isSupremo ? 'Panel Supremo' : ((me as any)?.branch_name ?? 'Mi Sucursal'));
-
-  const adminGeneralBranches = (accessibleBranchesQuery.data ?? []).filter((b) => b.id === (me as any)?.branch_id || isImpersonating || role === 'administrador_general');
   const visibleBranches = role === 'administrador_general' ? (accessibleBranchesQuery.data ?? []) : [];
-  const [selectedSidebarBranch, setSelectedSidebarBranch] = useState<number | ''>((me as any)?.branch_id ?? '');
   useEffect(() => {
-    if (selectedSidebarBranch !== '') return;
-    const currentBranch = (me as any)?.branch_id ?? '';
-    if (currentBranch) setSelectedSidebarBranch(currentBranch);
-  }, [me?.id, selectedSidebarBranch]);
+    if (!visibleBranches.length) return;
+    const current = visibleBranches.find((b) => b.id === (me as any)?.branch_id) ?? visibleBranches[0] ?? null;
+    setActiveBranch(current);
+  }, [visibleBranches, me?.branch_id]);
+
+  useEffect(() => {
+    if (!activeBranch) return;
+    queryClient.setQueryData(['selected-branch-context', me?.id], activeBranch);
+  }, [activeBranch, me?.id, queryClient]);
 
   const handleExitImpersonation = () => {
     sessionStorage.removeItem('impersonatedBranch');
@@ -262,16 +265,12 @@ export function AppLayout() {
           {role === 'administrador_general' && !isImpersonating && visibleBranches.length > 0 && (
             <div className="mt-3">
               <select
-                value={selectedSidebarBranch}
+                value={activeBranch?.id ?? ''}
                 onChange={(e) => {
                   const branchId = Number(e.target.value);
-                  setSelectedSidebarBranch(branchId);
-                  window.sessionStorage.setItem('impersonatedBranch', JSON.stringify({
-                    branchId,
-                    branchName: visibleBranches.find((b) => b.id === branchId)?.name ?? `Sucursal ${branchId}`,
-                    branchCode: visibleBranches.find((b) => b.id === branchId)?.code ?? '',
-                  }));
-                  window.location.reload();
+                  const branch = visibleBranches.find((b) => b.id === branchId) ?? null;
+                  setActiveBranch(branch);
+                  queryClient.setQueryData(['selected-branch-context', me?.id], branch);
                 }}
                 className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-white outline-none"
               >
