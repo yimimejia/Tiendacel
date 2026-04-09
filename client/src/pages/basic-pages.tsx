@@ -1225,6 +1225,29 @@ export function ReparacionesPage() {
   const queryClient = useQueryClient();
   const role = me.data?.role ?? '';
   const myBranchId = me.data?.branch_id ?? null;
+  const isManager = ['admin_supremo', 'administrador_general', 'encargado_sucursal'].includes(role);
+  const canCreateTask = ['admin_supremo', 'administrador_general', 'encargado_sucursal', 'caja_ventas', 'mensajero', 'empleado'].includes(role);
+  const [showNewWork, setShowNewWork] = useState(false);
+  const [workBranchId, setWorkBranchId] = useState<number | null>(null);
+  const [workAssigneeId, setWorkAssigneeId] = useState<number | null>(null);
+
+  const branchesQuery = useQuery({
+    queryKey: ['repair-work-branches', role],
+    enabled: ['admin_supremo', 'administrador_general'].includes(role),
+    queryFn: async () => (await apiRequest<any[]>('/branches')).data ?? [],
+    staleTime: 60000,
+  });
+
+  const employeesQuery = useQuery({
+    queryKey: ['repair-work-employees', workBranchId ?? myBranchId],
+    enabled: canCreateTask,
+    queryFn: async () => {
+      const bid = workBranchId ?? myBranchId;
+      const suffix = bid ? `?branch_id=${bid}` : '';
+      return (await apiRequest<any[]>(`/users${suffix}`)).data ?? [];
+    },
+    staleTime: 60000,
+  });
 
   const [viewProblem, setViewProblem] = useState<RepairItem | null>(null);
   const [assignRepairModal, setAssignRepairModal] = useState<RepairItem | null>(null);
@@ -1277,12 +1300,37 @@ export function ReparacionesPage() {
   if (repairsQuery.error) return <ErrorState message={(repairsQuery.error as Error).message} />;
 
   const repairs = repairsQuery.data ?? [];
-  const isManager = ['admin_supremo', 'administrador_general', 'encargado_sucursal'].includes(role);
   const canWork = ['tecnico', 'mensajero', 'empleado', 'encargado_sucursal'].includes(role);
 
   return (
     <section className="space-y-5">
-      <PanelTitulo titulo="Trabajos pendientes" descripcion="Reparaciones activas en tu sucursal." />
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-4 shadow-sm border border-slate-200">
+        <PanelTitulo titulo="Trabajos pendientes" descripcion="Reparaciones activas en tu sucursal." />
+        {canCreateTask && (
+          <button onClick={() => setShowNewWork((v) => !v)} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">
+            + Añadir trabajo
+          </button>
+        )}
+      </div>
+
+      {showNewWork && canCreateTask && (
+        <Card className="p-5 space-y-4">
+          <h3 className="font-semibold text-slate-800">Nuevo trabajo</h3>
+          <div className="grid gap-3 md:grid-cols-2">
+            {(role === 'admin_supremo' || role === 'administrador_general') && (
+              <Select label="Sucursal" value={workBranchId ?? ''} onChange={(e) => setWorkBranchId(e.target.value ? Number(e.target.value) : null)}>
+                <option value="">Selecciona sucursal</option>
+                {(branchesQuery.data ?? []).map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </Select>
+            )}
+            <Select label="Asignar a" value={workAssigneeId ?? ''} onChange={(e) => setWorkAssigneeId(e.target.value ? Number(e.target.value) : null)}>
+              <option value="">Sin asignar</option>
+              {(employeesQuery.data ?? []).map((u: any) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+            </Select>
+          </div>
+          <p className="text-xs text-slate-500">Aquí puedes crear envíos, asignaciones al mensajero, cajero o cualquier empleado.</p>
+        </Card>
+      )}
 
       {viewProblem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setViewProblem(null)}>
