@@ -1224,7 +1224,7 @@ export function ReparacionesPage() {
   const me = useMe();
   const queryClient = useQueryClient();
   const role = me.data?.role ?? '';
-  const myBranchId = me.data?.branchId ?? null;
+  const myBranchId = me.data?.branch_id ?? null;
 
   const [viewProblem, setViewProblem] = useState<RepairItem | null>(null);
   const [assignRepairModal, setAssignRepairModal] = useState<RepairItem | null>(null);
@@ -1855,7 +1855,7 @@ export function TransferenciasPage() {
     cancelada: 'bg-red-100 text-red-700',
   };
 
-  const myBranchId = me.data?.branchId;
+  const myBranchId = me.data?.branch_id;
   const otherBranches = (branches.data ?? []).filter((b: any) => b.id !== myBranchId);
   const canCreate = ['administrador_general', 'encargado_sucursal'].includes(me.data?.role ?? '');
 
@@ -3144,7 +3144,7 @@ export function VentasPage() {
                     v.customer_name,
                     Number(v.total ?? 0),
                     Number(v.advance ?? 0),
-                    me.data?.branch_code ?? '',
+                    me.data?.branch_name ?? '',
                   );
                   repairForm.reset();
                   setOrderSequence((prev) => prev + 1);
@@ -3431,6 +3431,56 @@ export function AuditoriaPage() {
               </tbody>
             </table>
           </div>
+        </Card>
+      )}
+    </section>
+  );
+}
+
+export function HistorialVentasPage() {
+  const salesQuery = useQuery({
+    queryKey: ['sales-history'],
+    queryFn: async () => (await apiRequest<any[]>('/dashboard/sales')).data ?? [],
+    staleTime: 30000,
+  });
+
+  const fmt = (n: string | number) => `RD$ ${parseFloat(String(n)).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+
+  return (
+    <section className="space-y-5">
+      <PanelTitulo titulo="Historial de ventas" descripcion="Listado de ventas registradas." />
+      {salesQuery.isLoading ? <LoadingState /> : salesQuery.isError ? <ErrorState message="Error cargando historial de ventas" /> : (
+        <Card className="overflow-hidden">
+          {(salesQuery.data ?? []).length === 0 ? (
+            <div className="p-8 text-center text-slate-400 text-sm">No hay ventas registradas.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-slate-500 border-b border-slate-100 bg-slate-50">
+                    <th className="px-4 py-3 font-medium">Fecha</th>
+                    <th className="px-4 py-3 font-medium">No.</th>
+                    <th className="px-4 py-3 font-medium">Cliente</th>
+                    <th className="px-4 py-3 font-medium text-right">Total</th>
+                    <th className="px-4 py-3 font-medium">Pago</th>
+                    <th className="px-4 py-3 font-medium">Cajero</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(salesQuery.data ?? []).map((sale: any) => (
+                    <tr key={sale.id} className="border-b border-slate-50 hover:bg-slate-50">
+                      <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap text-xs">{new Date(sale.created_at).toLocaleString('es-DO')}</td>
+                      <td className="px-4 py-2.5 text-slate-700 whitespace-nowrap font-mono text-xs">{sale.sale_number}</td>
+                      <td className="px-4 py-2.5 text-slate-600">{sale.customer_name ?? 'Público en general'}</td>
+                      <td className="px-4 py-2.5 text-right font-semibold text-green-700">{fmt(sale.total)}</td>
+                      <td className="px-4 py-2.5 text-slate-600 capitalize">{sale.payment_method}</td>
+                      <td className="px-4 py-2.5 text-slate-600">{sale.cashier_name}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Card>
       )}
     </section>
