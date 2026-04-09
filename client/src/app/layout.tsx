@@ -24,6 +24,7 @@ const BRANCH_MENU: MenuItem[] = [
   { to: '/inventario', label: 'Inventario' },
   { to: '/inventario/transferencias', label: 'Transferencias' },
   { to: '/ventas', label: 'Ventas' },
+  { to: '/ventas/historial', label: 'Historial de ventas' },
   { to: '/cuadre-caja', label: 'Historial de cuadres' },
   { to: '/gastos', label: 'Gastos' },
   { to: '/contabilidad', label: 'Contabilidad' },
@@ -41,6 +42,7 @@ const ADMIN_GENERAL_MENU: MenuItem[] = [
   { to: '/inventario', label: 'Inventario' },
   { to: '/inventario/transferencias', label: 'Transferencias' },
   { to: '/ventas', label: 'Ventas' },
+  { to: '/ventas/historial', label: 'Historial de ventas' },
   { to: '/cuadre-caja', label: 'Historial de cuadres' },
   { to: '/gastos', label: 'Gastos' },
   { to: '/contabilidad', label: 'Contabilidad' },
@@ -65,6 +67,7 @@ const TECNICO_MENU: MenuItem[] = [
 
 const CAJA_MENU: MenuItem[] = [
   { to: '/ventas', label: 'Ventas' },
+  { to: '/ventas/historial', label: 'Historial de ventas' },
   { to: '/cuadre-caja', label: 'Historial de cuadres' },
   { to: '/gastos', label: 'Gastos' },
   { to: '/clientes', label: 'Clientes' },
