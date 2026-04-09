@@ -2554,6 +2554,49 @@ export function VentasPage() {
     },
   });
 
+  const printRepairInvoice = async (repairNumber: string, customerName: string, total: number, advance: number, branchCode: string) => {
+    const pending = Math.max(0, total - advance);
+    const invoiceHtml = `
+      <html>
+        <head>
+          <title>Factura de reparación</title>
+          <style>
+            body{font-family: Arial, sans-serif; font-size:12px; width:80mm; margin:0; padding:10px; font-weight:700;}
+            h1,h2,p{margin:0 0 4px 0; font-weight:700;}
+            .center{text-align:center;}
+            .row{display:flex; justify-content:space-between; gap:10px;}
+            .divider{border-top:1px dashed #000; margin:8px 0;}
+            .title{font-size:22px; font-weight:900;}
+          </style>
+        </head>
+        <body>
+          <div class="center">
+            <h2 class="title">Factura</h2>
+            <p>Recepción de reparación</p>
+          </div>
+          <div class="divider"></div>
+          <p><strong>Cliente:</strong> ${customerName || '—'}</p>
+          <p><strong>Código de reparación:</strong> ${repairNumber}</p>
+          <p><strong>Código de equipo:</strong> ${repairNumber}</p>
+          <p><strong>Sucursal:</strong> ${branchCode || ''}</p>
+          <div class="divider"></div>
+          <div class="row"><span>Total reparación</span><strong>RD$ ${total.toFixed(2)}</strong></div>
+          <div class="row"><span>Abono</span><strong>RD$ ${advance.toFixed(2)}</strong></div>
+          <div class="row"><span>Restante</span><strong>RD$ ${pending.toFixed(2)}</strong></div>
+          <div class="divider"></div>
+          <p class="center">No somos responsables del equipo</p>
+        </body>
+      </html>
+    `;
+    const printWindow = window.open('', '_blank', 'width=380,height=700');
+    if (!printWindow) return;
+    printWindow.document.open();
+    printWindow.document.write(invoiceHtml);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => printWindow.print(), 350);
+  };
+
   const assignable = useQuery({
     queryKey: ['repairs', 'assignable-techs', posBranchId],
     enabled: showRepairModal && Boolean(posBranchId),
@@ -3096,7 +3139,13 @@ export function VentasPage() {
                 if (posBranchId) payload.branch_id = posBranchId;
                 try {
                   const result = await createRepairMutation.mutateAsync(payload);
-                  window.alert(`✅ Reparación ${result?.repair_number ?? ''} creada correctamente.\nCliente guardado en módulo de Clientes.`);
+                  await printRepairInvoice(
+                    result?.repair_number ?? '',
+                    v.customer_name,
+                    Number(v.total ?? 0),
+                    Number(v.advance ?? 0),
+                    me.data?.branch_code ?? '',
+                  );
                   repairForm.reset();
                   setOrderSequence((prev) => prev + 1);
                   setShowRepairModal(false);
