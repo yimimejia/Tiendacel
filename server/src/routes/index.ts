@@ -12,6 +12,7 @@ import { uploadsRoutes } from '../modules/uploads/routes.js';
 import { repairsRoutes } from '../modules/repairs/routes.js';
 import { branchSettingsRoutes } from '../modules/branch-settings/routes.js';
 import { subscriptionsRoutes } from '../modules/subscriptions/routes.js';
+import { productsRoutes } from '../modules/products/routes.js';
 
 const router = Router();
 
@@ -35,5 +36,6 @@ router.use('/uploads', uploadsRoutes);
 router.use('/repairs', repairsRoutes);
 router.use('/branch-settings', branchSettingsRoutes);
 router.use('/subscriptions', subscriptionsRoutes);
+router.use('/products', productsRoutes);
 
 export { router as apiRouter };

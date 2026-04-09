@@ -1202,7 +1202,8 @@ function Pendiente({ titulo }: { titulo: string }) {
 
 export const NuevaReparacionPage = () => <Pendiente titulo="Nueva reparación" />;
 export function InventarioPage() {
-  const [items, setItems] = useState<Array<{ id: number; name: string; cost: number; price: number; stock: number; photos?: string[] }>>([]);
+  const me = useMe();
+  const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -1210,52 +1211,95 @@ export function InventarioPage() {
     defaultValues: { name: '', cost: 0, price: 0, stock: 1 },
   });
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(INVENTORY_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) setItems(parsed);
-    } catch {}
-  }, []);
+  const role = me.data?.role ?? '';
+  const invBranchId = (() => {
+    if (role === 'admin_supremo') {
+      try {
+        const stored = sessionStorage.getItem('impersonatedBranch');
+        if (stored) return JSON.parse(stored)?.branchId ?? null;
+      } catch {}
+      return null;
+    }
+    return me.data?.branch_id ?? null;
+  })();
 
-  useEffect(() => {
-    localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(items));
-  }, [items]);
+  const productsQuery = useQuery({
+    queryKey: ['products', invBranchId],
+    enabled: me.data !== undefined && Boolean(invBranchId),
+    queryFn: async () => {
+      const suffix = invBranchId ? `?branch_id=${invBranchId}` : '';
+      return (await apiRequest<any[]>(`/products${suffix}`)).data;
+    },
+    staleTime: 10000,
+  });
+
+  const createMut = useMutation({
+    mutationFn: async (payload: any) => {
+      const suffix = invBranchId ? `?branch_id=${invBranchId}` : '';
+      return apiRequest(`/products${suffix}`, { method: 'POST', body: JSON.stringify(payload) });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['products', invBranchId] }),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: async ({ id, ...payload }: any) => {
+      const suffix = invBranchId ? `?branch_id=${invBranchId}` : '';
+      return apiRequest(`/products/${id}${suffix}`, { method: 'PUT', body: JSON.stringify(payload) });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['products', invBranchId] }),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: async (id: number) => {
+      const suffix = invBranchId ? `?branch_id=${invBranchId}` : '';
+      return apiRequest(`/products/${id}${suffix}`, { method: 'DELETE' });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['products', invBranchId] }),
+  });
 
   const onSubmit = form.handleSubmit(async (v) => {
-    if (!v.name?.trim()) {
-      setFormError('El nombre del producto es obligatorio.');
-      return;
-    }
-    if (v.cost <= 0 || v.price <= 0 || v.stock < 0) {
-      setFormError('Costo y precio deben ser mayor a 0. Stock no puede ser negativo.');
-      return;
-    }
+    if (!v.name?.trim()) { setFormError('El nombre del producto es obligatorio.'); return; }
+    if (v.cost < 0 || v.price <= 0 || v.stock < 0) { setFormError('Precio debe ser mayor a 0. Costo y stock no pueden ser negativos.'); return; }
+    setFormError(null);
 
     const photos = await Promise.all(
       Array.from(v.photo_files ?? []).map(
-        (file) =>
-          new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result));
-            reader.readAsDataURL(file);
-          }),
+        (file) => new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.readAsDataURL(file);
+        }),
       ),
     );
 
-    const payload = { id: editingId ?? Date.now(), name: v.name.trim(), cost: v.cost, price: v.price, stock: v.stock, photos };
+    const payload = { name: v.name.trim(), cost: v.cost, sale_price: v.price, stock: v.stock, photos: photos.length ? photos : undefined };
     if (editingId) {
-      setItems((prev) => prev.map((it) => (it.id === editingId ? payload : it)));
+      await updateMut.mutateAsync({ id: editingId, ...payload });
     } else {
-      setItems((prev) => [...prev, payload]);
+      await createMut.mutateAsync(payload);
     }
     setEditingId(null);
-    setFormError(null);
     form.reset({ name: '', cost: 0, price: 0, stock: 1 });
   });
 
+  const items = (productsQuery.data ?? []).map((p: any) => ({
+    id: p.id,
+    name: p.name,
+    cost: Number(p.cost ?? 0),
+    price: Number(p.sale_price ?? 0),
+    stock: Number(p.stock ?? 0),
+    photos: Array.isArray(p.photos) ? p.photos : [],
+  }));
   const filteredItems = items.filter((item) => item.name.toLowerCase().includes(search.toLowerCase()));
+
+  if (!invBranchId && role === 'admin_supremo') {
+    return (
+      <section className="space-y-5">
+        <PanelTitulo titulo="Inventario" descripcion="Catálogo completo con fotos, acciones y vista tipo tienda." />
+        <Card className="p-5"><p className="text-slate-500 text-sm">Para gestionar el inventario como Admin Supremo, primero usa <strong>Entrar</strong> en una sucursal desde la pantalla de Sucursales.</p></Card>
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-5">
@@ -1268,14 +1312,16 @@ export function InventarioPage() {
           <Input label="Stock" type="number" {...form.register('stock', { valueAsNumber: true })} />
           <Input label="Fotos del producto" type="file" accept="image/*" multiple className="md:col-span-2" {...form.register('photo_files')} />
           {formError ? <p className="text-sm text-red-600 md:col-span-4">{formError}</p> : null}
-          <div className="md:col-span-4">
-            <Btn type="submit">{editingId ? 'Guardar cambios' : 'Agregar al inventario'}</Btn>
+          <div className="md:col-span-4 flex gap-2 items-center">
+            <Btn type="submit" disabled={createMut.isPending || updateMut.isPending}>{editingId ? 'Guardar cambios' : 'Agregar al inventario'}</Btn>
+            {editingId ? <Btn type="button" variant="soft" onClick={() => { setEditingId(null); form.reset({ name: '', cost: 0, price: 0, stock: 1 }); }}>Cancelar</Btn> : null}
           </div>
         </form>
       </Card>
       <Card className="p-5">
         <Input label="Buscar producto" placeholder="Busca por nombre..." value={search} onChange={(e) => setSearch(e.target.value)} />
       </Card>
+      {productsQuery.isLoading ? <LoadingState /> : null}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {filteredItems.map((item) => (
           <Card key={item.id} className="overflow-hidden">
@@ -1289,34 +1335,21 @@ export function InventarioPage() {
               <p className="text-sm">Precio: <strong>RD$ {item.price.toFixed(2)}</strong></p>
               <p className="text-sm text-emerald-700">Ganancia: RD$ {(item.price - item.cost).toFixed(2)}</p>
               <div className="flex gap-2 pt-2">
-                <Btn
-                  size="sm"
-                  variant="soft"
-                  onClick={() => {
-                    setEditingId(item.id);
-                    form.reset({ name: item.name, cost: item.cost, price: item.price, stock: item.stock });
-                    setFormError(null);
-                  }}
-                >
-                  Editar
-                </Btn>
-                <Btn size="sm" variant="danger" onClick={() => setItems((prev) => prev.filter((it) => it.id !== item.id))}>Eliminar</Btn>
+                <Btn size="sm" variant="soft" onClick={() => { setEditingId(item.id); form.reset({ name: item.name, cost: item.cost, price: item.price, stock: item.stock }); setFormError(null); }}>Editar</Btn>
+                <Btn size="sm" variant="danger" onClick={() => deleteMut.mutate(item.id)} disabled={deleteMut.isPending}>Eliminar</Btn>
               </div>
             </div>
           </Card>
         ))}
       </div>
+      {filteredItems.length === 0 && !productsQuery.isLoading ? <Card className="p-5"><p className="text-sm text-slate-400">No hay productos registrados.</p></Card> : null}
       <Card className="p-5 overflow-x-auto">
         <h3 className="font-semibold mb-2">Resumen tabular</h3>
         {filteredItems.length === 0 ? <p className="text-sm text-slate-400">No hay productos registrados.</p> : (
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-slate-500">
-                <th className="pb-2">Producto</th>
-                <th className="pb-2">Costo</th>
-                <th className="pb-2">Precio</th>
-                <th className="pb-2">Ganancia</th>
-                <th className="pb-2">Stock</th>
+                <th className="pb-2">Producto</th><th className="pb-2">Costo</th><th className="pb-2">Precio</th><th className="pb-2">Ganancia</th><th className="pb-2">Stock</th>
               </tr>
             </thead>
             <tbody>
@@ -1360,7 +1393,6 @@ export function VentasPage() {
   const [mixedMethod, setMixedMethod] = useState('tarjeta');
   const [cashAmount, setCashAmount] = useState(0);
   const [productSearch, setProductSearch] = useState('');
-  const [inventoryItems, setInventoryItems] = useState<Array<{ id: number; name: string; price: number; stock: number; photo?: string; photos?: string[] }>>([]);
   const [saleType, setSaleType] = useState('contado');
   const [seller, setSeller] = useState('');
   const [customerSearch, setCustomerSearch] = useState('PORTADOR');
@@ -1401,7 +1433,7 @@ export function VentasPage() {
     if (posRole === 'admin_supremo') {
       try {
         const stored = sessionStorage.getItem('impersonatedBranch');
-        if (stored) return JSON.parse(stored)?.id ?? null;
+        if (stored) return JSON.parse(stored)?.branchId ?? null;
       } catch {}
       return null;
     }
@@ -1421,6 +1453,16 @@ export function VentasPage() {
       return (await apiRequest<any>(`/branch-settings${suffix}`)).data;
     },
     staleTime: 30000,
+  });
+
+  const posProductsQuery = useQuery({
+    queryKey: ['products', posBranchId],
+    enabled: me.data !== undefined && Boolean(posBranchId),
+    queryFn: async () => {
+      const suffix = posBranchId ? `?branch_id=${posBranchId}` : '';
+      return (await apiRequest<any[]>(`/products${suffix}`)).data ?? [];
+    },
+    staleTime: 15000,
   });
 
   const comprobantes = ['Consumidor final', 'Crédito fiscal', 'Gubernamental', 'Régimen especial'];
@@ -1446,14 +1488,6 @@ export function VentasPage() {
     return String(settings?.current ?? settings?.range_start ?? '');
   })();
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(INVENTORY_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) setInventoryItems(parsed);
-    } catch {}
-  }, []);
 
   const ITBIS_RATE = 0.18;
   const subtotalBruto = cart.reduce((acc, item) => acc + Number(item.total_linea ?? 0), 0);
@@ -1468,6 +1502,18 @@ export function VentasPage() {
     'Gubernamental': String(ncfData.gubernamental?.current ?? ncfData.gubernamental?.range_start ?? ''),
     'Régimen especial': String(ncfData.regimen_especial?.current ?? ncfData.regimen_especial?.range_start ?? ''),
   };
+  const inventoryItems = (posProductsQuery.data ?? []).map((p: any) => ({
+    id: p.id,
+    name: p.name,
+    price: Number(p.sale_price ?? 0),
+    stock: Number(p.stock ?? 0),
+    photos: Array.isArray(p.photos) ? p.photos : [],
+    photo: undefined,
+    sku: p.sku ?? `P-${p.id}`,
+    itbis_aplica: Boolean(p.itbis_aplica ?? true),
+    itbis_tasa: Number(p.itbis_tasa ?? 0.18),
+    precio_incluye_itbis: Boolean(p.precio_incluye_itbis ?? true),
+  }));
   const visibleProducts = inventoryItems.filter((item) => item.name.toLowerCase().includes(productSearch.toLowerCase()));
 
   const buildCartLine = (payload: { id: number; code: string; name: string; qty: number; price: number; itbis_aplica?: boolean; itbis_tasa?: number; precio_incluye_itbis?: boolean; }) => {
