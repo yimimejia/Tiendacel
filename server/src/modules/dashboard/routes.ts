@@ -158,7 +158,25 @@ inventoryRouter.get('/transfers', asyncHandler(async (req, res) => {
     LIMIT 100
   `);
 
-  res.json({ success: true, data: rows.rows });
+  const transferIds = rows.rows.map(r => r.id);
+  let itemsMap: Record<number, any[]> = {};
+  if (transferIds.length > 0) {
+    const items = await db.execute<{
+      transfer_id: number; product_id: number; quantity: string; product_name: string; product_code: string;
+    }>(sql`
+      SELECT ti.transfer_id, ti.product_id, ti.quantity,
+             p.name AS product_name, COALESCE(p.barcode, p.code, '') AS product_code
+      FROM inventory_transfer_items ti
+      JOIN products p ON p.id = ti.product_id
+      WHERE ti.transfer_id = ANY(ARRAY[${sql.join(transferIds.map(id => sql`${id}`), sql`, `)}])
+    `);
+    for (const item of items.rows) {
+      if (!itemsMap[item.transfer_id]) itemsMap[item.transfer_id] = [];
+      itemsMap[item.transfer_id].push({ product_id: item.product_id, product_name: item.product_name, product_code: item.product_code, quantity: parseFloat(item.quantity) });
+    }
+  }
+
+  res.json({ success: true, data: rows.rows.map(r => ({ ...r, items: itemsMap[r.id] ?? [] })) });
 }));
 
 inventoryRouter.post('/transfers', asyncHandler(async (req, res) => {
@@ -168,9 +186,9 @@ inventoryRouter.post('/transfers', asyncHandler(async (req, res) => {
     throw new HttpError(403, 'No autorizado para crear transferencias');
   }
 
-  const { destination_branch_id, note } = req.body ?? {};
+  const { destination_branch_id, note, items } = req.body ?? {};
   if (!destination_branch_id) throw new HttpError(400, 'Sucursal destino requerida');
-  if (destination_branch_id === user.branchId) throw new HttpError(400, 'La sucursal destino debe ser diferente a la de origen');
+  if (parseInt(destination_branch_id) === user.branchId) throw new HttpError(400, 'La sucursal destino debe ser diferente a la de origen');
 
   const [created] = await db.insert(inventoryTransfers).values({
     originBranchId: user.branchId,
@@ -178,6 +196,17 @@ inventoryRouter.post('/transfers', asyncHandler(async (req, res) => {
     createdByUserId: user.id,
     note: note ?? null,
   }).returning();
+
+  if (Array.isArray(items) && items.length > 0) {
+    for (const item of items) {
+      if (item.product_id && item.quantity > 0) {
+        await db.execute(sql`
+          INSERT INTO inventory_transfer_items (transfer_id, product_id, quantity)
+          VALUES (${created.id}, ${parseInt(item.product_id)}, ${parseFloat(item.quantity)})
+        `);
+      }
+    }
+  }
 
   res.status(201).json({ success: true, data: created });
 }));

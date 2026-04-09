@@ -93,11 +93,20 @@ B01=Crédito Fiscal, B02=Consumidor Final, B03=Nota de Débito, B04=Nota de Cré
 
 ## Frontend Menu by Role
 
-- **admin_supremo**: Dashboard, Sucursales & Suscripciones, Usuarios
-- **administrador_general**: Dashboard, Usuarios, Clientes, Reparaciones, Inventario, Ventas, Reportes, Auditoría, Comprobantes NCF, Configuración
-- **encargado_sucursal**: Dashboard, Clientes, Reparaciones, Inventario, Transferencias, Ventas, Reportes, Comprobantes NCF, Configuración
-- **tecnico**: Dashboard, Reparaciones, Clientes
-- **caja_ventas**: Ventas, Clientes
+- **admin_supremo**: Dashboard, Sucursales & Suscripciones, Usuarios, Auditoría
+- **administrador_general**: Dashboard, Usuarios, Clientes, Trabajos pendientes, Trabajos completados, Inventario, Transferencias, Ventas, Gastos, Contabilidad, Reportes, Comprobantes NCF, Configuración
+- **encargado_sucursal**: Dashboard, Clientes, Trabajos pendientes, Trabajos completados, Inventario, Transferencias, Ventas, Gastos, Contabilidad, Reportes, Comprobantes NCF, Configuración
+- **tecnico**: Dashboard, Trabajos pendientes, Trabajos completados, Clientes
+- **mensajero**: Dashboard, Trabajos pendientes, Trabajos completados, Clientes
+- **empleado**: Dashboard, Trabajos pendientes, Trabajos completados, Clientes
+- **caja_ventas**: Ventas, Clientes, Trabajos completados
+
+## New Pages (2026-04)
+
+- `/reparaciones` → "Trabajos pendientes" — card layout, repair status badge, view-problem modal, assign-employee modal (fetches technicians for that repair's branch), status-update modal (pick any status including "Entregado")
+- `/trabajos-completados` — search completed repairs by client name, model, problem, order#, phone
+- `/gastos` — register expenses (amount, category, payment method, reference), list/delete, period filter (7/30/60/90 days), total display
+- `/contabilidad` — combined view: sales revenue + expenses + net balance + expenses by category breakdown + revenue by day
 
 ## API Routes
 
@@ -105,7 +114,10 @@ B01=Crédito Fiscal, B02=Consumidor Final, B03=Nota de Débito, B04=Nota de Cré
 - `GET/POST/PATCH /api/branches`
 - `GET/POST/PATCH /api/users`
 - `GET/POST/PATCH /api/customers`
-- `GET/POST/PATCH /api/repairs`
+- `GET/POST/PATCH /api/repairs` — supports `?filter=pending|completed|all`
+- `GET /api/repairs/completed?search=X` — search completed repairs
+- `GET /api/repairs/assignable-technicians?branch_id=X` — employees for a branch
+- `PATCH /api/repairs/:id/status` — update repair status (tecnico/mensajero/empleado/encargado/admin)
 - `GET /api/subscriptions` — list all branches with payment status (admin_supremo)
 - `GET/POST /api/subscriptions/:branchId` — get/set subscription for branch
 - `GET /api/subscriptions/:branchId/payments` — payment history
@@ -118,3 +130,16 @@ B01=Crédito Fiscal, B02=Consumidor Final, B03=Nota de Débito, B04=Nota de Cré
 - `POST /api/ncf/next` — atomically issue next NCF (increment current_sequence)
 - `GET /api/ncf/types` — list all supported NCF type codes and labels
 - `GET/POST/PUT/DELETE /api/products?branch_id=X` — product catalog with photos, ITBIS config
+- `GET /api/expenses?days=N` — list expenses for branch (last N days)
+- `POST /api/expenses` — register expense (amount, category, description, payment_method, reference)
+- `DELETE /api/expenses/:id` — delete expense
+- `GET /api/dashboard/stats` — branch metrics (customers, repairs, today's sales)
+- `GET /api/dashboard/audit-logs` — audit log for branch (admin_supremo sees all)
+- `GET /api/dashboard/reports/sales?days=N` — sales by day breakdown
+- `GET /api/inventory/transfers` — list transfers (with items)
+- `POST /api/inventory/transfers` — create transfer (with items array: product_id+quantity)
+
+## DB Tables Added
+
+- `expenses` — branch_id, created_by_user_id, amount, category, description, payment_method, reference, created_at
+- `inventory_transfer_items` — transfer_id, product_id, quantity

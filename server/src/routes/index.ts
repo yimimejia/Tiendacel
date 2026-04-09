@@ -15,6 +15,7 @@ import { subscriptionsRoutes } from '../modules/subscriptions/routes.js';
 import { productsRoutes } from '../modules/products/routes.js';
 import { ncfRoutes } from '../modules/ncf/routes.js';
 import { dashboardRoutes, inventoryRouter } from '../modules/dashboard/routes.js';
+import { expensesRoutes } from '../modules/expenses/routes.js';
 
 const router = Router();
 
@@ -42,5 +43,6 @@ router.use('/products', productsRoutes);
 router.use('/ncf', ncfRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/inventory', inventoryRouter);
+router.use('/expenses', expensesRoutes);
 
 export { router as apiRouter };

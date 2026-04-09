@@ -62,12 +62,19 @@ interface RepairItem {
   id: number;
   repair_number: string;
   branch_id: number;
+  customer_id: number;
+  customer_name: string;
+  customer_phone: string;
   brand: string;
   model: string;
+  reported_issue: string;
   internal_status: string;
   technician_id: number | null;
   technician_name: string | null;
   assignment_status: 'asignado' | 'sin_asignar';
+  received_at: string;
+  delivered_at: string | null;
+  is_completed: boolean;
 }
 
 interface AssignableTech {
@@ -1116,15 +1123,57 @@ export function ClienteDetallePage() {
   );
 }
 
+const PENDING_STATUSES_LIST = ['Recibido', 'Pendiente', 'En diagnóstico', 'Esperando aprobación', 'En reparación', 'Reparado', 'Listo para entregar'];
+
+function RepairStatusBadge({ status }: { status: string }) {
+  const colorMap: Record<string, string> = {
+    'Recibido': 'bg-slate-100 text-slate-700',
+    'Pendiente': 'bg-yellow-100 text-yellow-700',
+    'En diagnóstico': 'bg-blue-100 text-blue-700',
+    'Esperando aprobación': 'bg-orange-100 text-orange-700',
+    'En reparación': 'bg-indigo-100 text-indigo-700',
+    'Reparado': 'bg-teal-100 text-teal-700',
+    'Listo para entregar': 'bg-green-100 text-green-700',
+    'Entregado': 'bg-green-200 text-green-800',
+    'Cancelado': 'bg-red-100 text-red-700',
+    'No reparable': 'bg-gray-200 text-gray-700',
+  };
+  return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${colorMap[status] ?? 'bg-slate-100 text-slate-600'}`}>{status}</span>;
+}
+
 export function ReparacionesPage() {
   const me = useMe();
   const queryClient = useQueryClient();
   const role = me.data?.role ?? '';
-  const repairsQuery = useQuery({ queryKey: ['repairs'], queryFn: async () => (await apiRequest<RepairItem[]>('/repairs')).data, staleTime: 30000 });
+  const myBranchId = me.data?.branchId ?? null;
+
+  const [viewProblem, setViewProblem] = useState<RepairItem | null>(null);
+  const [assignRepairModal, setAssignRepairModal] = useState<RepairItem | null>(null);
+  const [statusRepair, setStatusRepair] = useState<RepairItem | null>(null);
+
+  const getEffectiveBranchId = () => {
+    try {
+      const stored = sessionStorage.getItem('impersonatedBranch');
+      if (stored) return JSON.parse(stored)?.branchId ?? null;
+    } catch {}
+    return myBranchId;
+  };
+
+  const repairsQuery = useQuery({
+    queryKey: ['repairs', 'pending'],
+    queryFn: async () => (await apiRequest<RepairItem[]>('/repairs?filter=pending')).data,
+    staleTime: 20000,
+  });
+
+  const effectiveBranchId = getEffectiveBranchId();
+
   const techniciansQuery = useQuery({
-    queryKey: ['repairs-technicians'],
-    enabled: ['admin_supremo', 'administrador_general', 'encargado_sucursal'].includes(role),
-    queryFn: async () => (await apiRequest<AssignableTech[]>('/repairs/assignable-technicians')).data,
+    queryKey: ['repairs-technicians', assignRepairModal?.branch_id ?? effectiveBranchId],
+    enabled: Boolean(assignRepairModal) && ['admin_supremo', 'administrador_general', 'encargado_sucursal'].includes(role),
+    queryFn: async () => {
+      const bid = assignRepairModal?.branch_id ?? effectiveBranchId;
+      return (await apiRequest<AssignableTech[]>(`/repairs/assignable-technicians${bid ? `?branch_id=${bid}` : ''}`)).data;
+    },
     staleTime: 60000,
   });
 
@@ -1136,7 +1185,13 @@ export function ReparacionesPage() {
   const assignMutation = useMutation({
     mutationFn: async ({ repairId, technician_id }: { repairId: number; technician_id: number | null }) =>
       apiRequest(`/repairs/${repairId}/assignment`, { method: 'PATCH', body: JSON.stringify({ technician_id }) }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['repairs'] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['repairs'] }); setAssignRepairModal(null); },
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: async ({ repairId, status }: { repairId: number; status: string }) =>
+      apiRequest(`/repairs/${repairId}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['repairs'] }); setStatusRepair(null); },
   });
 
   if (repairsQuery.isLoading || me.isLoading) return <LoadingState />;
@@ -1144,63 +1199,206 @@ export function ReparacionesPage() {
 
   const repairs = repairsQuery.data ?? [];
   const isManager = ['admin_supremo', 'administrador_general', 'encargado_sucursal'].includes(role);
+  const canWork = ['tecnico', 'mensajero', 'empleado', 'encargado_sucursal'].includes(role);
 
   return (
     <section className="space-y-5">
-      <PanelTitulo titulo="Reparaciones" descripcion="Gestión de reparaciones y asignación de técnicos." />
-      {repairs.length === 0 ? <EmptyState message="No hay reparaciones." /> : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-xs text-slate-500 text-left">
-                <th className="pb-2 pr-4 font-medium">#</th>
-                <th className="pb-2 pr-4 font-medium">Equipo</th>
-                <th className="pb-2 pr-4 font-medium">Estado</th>
-                <th className="pb-2 pr-4 font-medium">Técnico</th>
-                {isManager || role === 'tecnico' ? <th className="pb-2 font-medium">Acciones</th> : null}
-              </tr>
-            </thead>
-            <tbody>
-              {repairs.map((repair) => (
-                <tr key={repair.id} className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="py-3 pr-4 font-mono text-xs">{repair.repair_number}</td>
-                  <td className="py-3 pr-4">{repair.brand} {repair.model}</td>
-                  <td className="py-3 pr-4">
-                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">{repair.internal_status}</span>
-                  </td>
-                  <td className="py-3 pr-4">
-                    {repair.technician_name
-                      ? <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs text-green-700">{repair.technician_name}</span>
-                      : <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">Sin asignar</span>}
-                  </td>
-                  {isManager ? (
-                    <td className="py-3">
-                      <select
-                        className="vt-input text-xs py-1"
-                        defaultValue={repair.technician_id ?? ''}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          assignMutation.mutate({ repairId: repair.id, technician_id: value ? Number(value) : null });
-                        }}
-                      >
-                        <option value="">Sin asignar</option>
-                        {(techniciansQuery.data ?? []).map((tech) => <option key={tech.id} value={tech.id}>{tech.full_name}</option>)}
-                      </select>
-                    </td>
-                  ) : null}
-                  {role === 'tecnico' && repair.assignment_status === 'sin_asignar' ? (
-                    <td className="py-3">
-                      <Btn size="sm" variant="soft" disabled={takeWorkMutation.isPending} onClick={() => takeWorkMutation.mutate(repair.id)}>
-                        Tomar trabajo
-                      </Btn>
-                    </td>
-                  ) : null}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <PanelTitulo titulo="Trabajos pendientes" descripcion="Reparaciones activas en tu sucursal." />
+
+      {viewProblem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setViewProblem(null)}>
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-3" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-slate-800 text-lg">Detalle del trabajo</h3>
+            <p className="text-xs text-slate-500 font-mono">Orden: {viewProblem.repair_number}</p>
+            <p className="text-sm"><span className="text-slate-500">Equipo:</span> <strong>{viewProblem.brand} {viewProblem.model}</strong></p>
+            <p className="text-sm"><span className="text-slate-500">Cliente:</span> <strong>{viewProblem.customer_name}</strong> {viewProblem.customer_phone && <span className="text-slate-400">· {viewProblem.customer_phone}</span>}</p>
+            <p className="text-sm"><span className="text-slate-500">Problema reportado:</span></p>
+            <p className="bg-slate-50 rounded-lg p-3 text-sm text-slate-700 whitespace-pre-wrap">{viewProblem.reported_issue}</p>
+            <p className="text-xs text-slate-400">Recibido: {new Date(viewProblem.received_at).toLocaleString('es-DO')}</p>
+            <button onClick={() => setViewProblem(null)} className="mt-2 w-full py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">Cerrar</button>
+          </div>
         </div>
       )}
+
+      {assignRepairModal && isManager && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setAssignRepairModal(null)}>
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-slate-800">Asignar empleado</h3>
+            <p className="text-xs text-slate-500">Orden: <strong>{assignRepairModal.repair_number}</strong> · {assignRepairModal.brand} {assignRepairModal.model}</p>
+            {techniciansQuery.isLoading ? <LoadingState /> : (
+              <select defaultValue={assignRepairModal.technician_id ?? ''}
+                onChange={e => {
+                  const v = e.target.value;
+                  assignMutation.mutate({ repairId: assignRepairModal.id, technician_id: v ? Number(v) : null });
+                }}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">Sin asignar</option>
+                {(techniciansQuery.data ?? []).map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
+              </select>
+            )}
+            <button onClick={() => setAssignRepairModal(null)} className="w-full py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {statusRepair && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setStatusRepair(null)}>
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-3" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-slate-800">Actualizar estado</h3>
+            <p className="text-xs text-slate-500">{statusRepair.repair_number} · {statusRepair.brand} {statusRepair.model}</p>
+            <div className="space-y-2">
+              {PENDING_STATUSES_LIST.map(s => (
+                <button key={s} disabled={statusMutation.isPending}
+                  onClick={() => statusMutation.mutate({ repairId: statusRepair.id, status: s })}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm border transition-colors ${statusRepair.internal_status === s ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:border-blue-400 hover:bg-blue-50'}`}>
+                  {s}
+                </button>
+              ))}
+              <button disabled={statusMutation.isPending}
+                onClick={() => statusMutation.mutate({ repairId: statusRepair.id, status: 'Entregado' })}
+                className="w-full text-left px-3 py-2 rounded-lg text-sm border border-green-500 bg-green-50 text-green-700 hover:bg-green-100 transition-colors font-medium">
+                Marcar como entregado/completado
+              </button>
+            </div>
+            <button onClick={() => setStatusRepair(null)} className="w-full py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {repairs.length === 0 ? <EmptyState message="No hay trabajos pendientes." /> : (
+        <div className="space-y-3">
+          {repairs.map((repair) => (
+            <Card key={repair.id} className="p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="space-y-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{repair.repair_number}</span>
+                    <RepairStatusBadge status={repair.internal_status} />
+                  </div>
+                  <p className="font-semibold text-slate-800">{repair.brand} {repair.model}</p>
+                  <p className="text-sm text-slate-600">Cliente: <span className="font-medium">{repair.customer_name}</span>{repair.customer_phone ? ` · ${repair.customer_phone}` : ''}</p>
+                  <p className="text-sm text-slate-500 truncate max-w-xs">Problema: {repair.reported_issue}</p>
+                  <div className="flex items-center gap-2 flex-wrap mt-1">
+                    <span className="text-xs text-slate-400">Responsable:</span>
+                    {repair.technician_name
+                      ? <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">{repair.technician_name}</span>
+                      : <span className="text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">Ninguno</span>}
+                  </div>
+                  <p className="text-xs text-slate-400">Recibido: {new Date(repair.received_at).toLocaleDateString('es-DO')}</p>
+                </div>
+                <div className="flex flex-wrap gap-2 items-start">
+                  <button onClick={() => setViewProblem(repair)}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200">
+                    Ver problema
+                  </button>
+                  {isManager && (
+                    <button onClick={() => setAssignRepairModal(repair)}
+                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200">
+                      Asignar
+                    </button>
+                  )}
+                  {(canWork || isManager) && (
+                    <button onClick={() => setStatusRepair(repair)}
+                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200">
+                      Estado
+                    </button>
+                  )}
+                  {canWork && !isManager && repair.assignment_status === 'sin_asignar' && (
+                    <Btn size="sm" variant="soft" disabled={takeWorkMutation.isPending} onClick={() => takeWorkMutation.mutate(repair.id)}>
+                      Tomar
+                    </Btn>
+                  )}
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+export function TrabajosCompletadosPage() {
+  const [search, setSearch] = useState('');
+  const [query, setQuery] = useState('');
+
+  const [viewProblem, setViewProblem] = useState<RepairItem | null>(null);
+
+  const completedQuery = useQuery({
+    queryKey: ['repairs-completed', query],
+    queryFn: async () => {
+      const params = query ? `?search=${encodeURIComponent(query)}` : '';
+      return (await apiRequest<RepairItem[]>(`/repairs/completed${params}`)).data;
+    },
+    staleTime: 30000,
+  });
+
+  const handleSearch = () => setQuery(search.trim());
+
+  return (
+    <section className="space-y-5">
+      <PanelTitulo titulo="Trabajos completados" descripcion="Busca reparaciones entregadas por nombre, modelo o problema." />
+
+      {viewProblem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setViewProblem(null)}>
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-3" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-slate-800 text-lg">Detalle del trabajo</h3>
+            <p className="text-xs text-slate-500 font-mono">Orden: {viewProblem.repair_number}</p>
+            <p className="text-sm"><span className="text-slate-500">Estado:</span> <RepairStatusBadge status={viewProblem.internal_status} /></p>
+            <p className="text-sm"><span className="text-slate-500">Equipo:</span> <strong>{viewProblem.brand} {viewProblem.model}</strong></p>
+            <p className="text-sm"><span className="text-slate-500">Cliente:</span> <strong>{viewProblem.customer_name}</strong> {viewProblem.customer_phone && <span className="text-slate-400">· {viewProblem.customer_phone}</span>}</p>
+            <p className="text-sm"><span className="text-slate-500">Problema reportado:</span></p>
+            <p className="bg-slate-50 rounded-lg p-3 text-sm text-slate-700 whitespace-pre-wrap">{viewProblem.reported_issue}</p>
+            <p className="text-xs text-slate-400">Recibido: {new Date(viewProblem.received_at).toLocaleString('es-DO')}</p>
+            {viewProblem.delivered_at && <p className="text-xs text-slate-400">Entregado: {new Date(viewProblem.delivered_at).toLocaleString('es-DO')}</p>}
+            {viewProblem.technician_name && <p className="text-xs text-slate-400">Responsable: {viewProblem.technician_name}</p>}
+            <button onClick={() => setViewProblem(null)} className="mt-2 w-full py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">Cerrar</button>
+          </div>
+        </div>
+      )}
+
+      <Card className="p-4">
+        <div className="flex gap-2">
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSearch()}
+            placeholder="Buscar por cliente, modelo, problema, orden..."
+            className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <button onClick={handleSearch}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+            Buscar
+          </button>
+        </div>
+        {query && <p className="mt-2 text-xs text-slate-400">Mostrando resultados para: <strong>{query}</strong></p>}
+      </Card>
+
+      {completedQuery.isLoading ? <LoadingState /> : completedQuery.isError ? <ErrorState message="Error cargando trabajos" /> :
+        (completedQuery.data ?? []).length === 0 ? (
+          <EmptyState message={query ? `No se encontraron resultados para "${query}".` : 'Ingresa un término de búsqueda para encontrar trabajos completados.'} />
+        ) : (
+          <div className="space-y-3">
+            {(completedQuery.data ?? []).map(repair => (
+              <Card key={repair.id} className="p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{repair.repair_number}</span>
+                      <RepairStatusBadge status={repair.internal_status} />
+                    </div>
+                    <p className="font-semibold text-slate-800">{repair.brand} {repair.model}</p>
+                    <p className="text-sm text-slate-600">Cliente: <span className="font-medium">{repair.customer_name}</span>{repair.customer_phone ? ` · ${repair.customer_phone}` : ''}</p>
+                    <p className="text-sm text-slate-500 truncate max-w-xs">Problema: {repair.reported_issue}</p>
+                    {repair.delivered_at && <p className="text-xs text-slate-400">Entregado: {new Date(repair.delivered_at).toLocaleDateString('es-DO')}</p>}
+                  </div>
+                  <button onClick={() => setViewProblem(repair)}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200">
+                    Ver detalle
+                  </button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )
+      }
     </section>
   );
 }
@@ -1394,6 +1592,8 @@ type TransferRow = {
   origin_name?: string; destination_name?: string; creator_name?: string;
 };
 
+interface TransferItem { product_id: string; product_name: string; quantity: string; }
+
 export function TransferenciasPage() {
   const me = useMe();
   const qc = useQueryClient();
@@ -1401,6 +1601,9 @@ export function TransferenciasPage() {
   const [note, setNote] = useState('');
   const [destBranchId, setDestBranchId] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
+  const [items, setItems] = useState<TransferItem[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState('');
+  const [selectedQty, setSelectedQty] = useState('1');
 
   const transfers = useQuery({
     queryKey: ['inventory-transfers'],
@@ -1414,20 +1617,49 @@ export function TransferenciasPage() {
     staleTime: 60000,
   });
 
+  const productsQuery = useQuery({
+    queryKey: ['products-list'],
+    queryFn: async () => (await apiRequest<any[]>('/products')).data,
+    staleTime: 60000,
+    enabled: showForm,
+  });
+
   const createMutation = useMutation({
     mutationFn: async () => apiRequest('/inventory/transfers', {
       method: 'POST',
-      body: JSON.stringify({ destination_branch_id: parseInt(destBranchId), note }),
+      body: JSON.stringify({
+        destination_branch_id: parseInt(destBranchId),
+        note,
+        items: items.map(i => ({ product_id: parseInt(i.product_id), quantity: parseFloat(i.quantity) })),
+      }),
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['inventory-transfers'] });
       setShowForm(false);
       setNote('');
       setDestBranchId('');
+      setItems([]);
       setFormError(null);
     },
     onError: (e: any) => setFormError(e?.message ?? 'Error al crear transferencia'),
   });
+
+  const addItem = () => {
+    if (!selectedProduct) return;
+    const prod = (productsQuery.data ?? []).find((p: any) => String(p.id) === selectedProduct);
+    if (!prod) return;
+    const qty = parseFloat(selectedQty) || 1;
+    const existing = items.find(i => i.product_id === selectedProduct);
+    if (existing) {
+      setItems(items.map(i => i.product_id === selectedProduct ? { ...i, quantity: String(parseFloat(i.quantity) + qty) } : i));
+    } else {
+      setItems([...items, { product_id: selectedProduct, product_name: prod.name, quantity: String(qty) }]);
+    }
+    setSelectedProduct('');
+    setSelectedQty('1');
+  };
+
+  const removeItem = (pid: string) => setItems(items.filter(i => i.product_id !== pid));
 
   const statusLabel: Record<string, string> = {
     creada: 'Creada', en_transito: 'En tránsito', recibida: 'Recibida', cancelada: 'Cancelada',
@@ -1466,6 +1698,37 @@ export function TransferenciasPage() {
               {otherBranches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </div>
+
+          <div className="border border-slate-200 rounded-lg p-4 space-y-3">
+            <p className="text-sm font-medium text-slate-700">Productos a transferir</p>
+            <div className="flex gap-2 flex-wrap">
+              <select value={selectedProduct} onChange={e => setSelectedProduct(e.target.value)}
+                className="flex-1 min-w-[160px] border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">Selecciona producto...</option>
+                {(productsQuery.data ?? []).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <input type="number" min="0.01" step="0.01" value={selectedQty} onChange={e => setSelectedQty(e.target.value)}
+                className="w-20 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Cant." />
+              <button onClick={addItem}
+                className="px-3 py-2 bg-slate-700 text-white rounded-lg text-sm font-medium hover:bg-slate-800">
+                Agregar
+              </button>
+            </div>
+            {items.length > 0 && (
+              <div className="space-y-2">
+                {items.map(item => (
+                  <div key={item.product_id} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2 text-sm">
+                    <span className="text-slate-700 flex-1">{item.product_name}</span>
+                    <span className="font-medium text-slate-800">×{item.quantity}</span>
+                    <button onClick={() => removeItem(item.product_id)} className="text-red-500 hover:text-red-700 ml-2">✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {items.length === 0 && <p className="text-xs text-slate-400 italic">Sin productos agregados (opcional).</p>}
+          </div>
+
           <div>
             <label className="block text-sm text-slate-600 mb-1">Nota (opcional)</label>
             <textarea value={note} onChange={e => setNote(e.target.value)} rows={2}
@@ -1485,23 +1748,293 @@ export function TransferenciasPage() {
           <EmptyState message="No hay transferencias registradas." />
         ) : (
           <div className="space-y-3">
-            {(transfers.data ?? []).map((t) => (
+            {(transfers.data ?? []).map((t: any) => (
               <Card key={t.id} className="p-4">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
-                  <div>
-                    <p className="font-medium text-slate-800 text-sm">Transferencia #{t.id}</p>
-                    <p className="text-xs text-slate-500 mt-0.5">{t.note ?? 'Sin nota'}</p>
-                    <p className="text-xs text-slate-400 mt-1">{new Date(t.created_at).toLocaleString('es-DO')}</p>
+                  <div className="space-y-1 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-medium text-slate-800 text-sm">Transferencia #{t.id}</p>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColor[t.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                        {statusLabel[t.status] ?? t.status}
+                      </span>
+                    </div>
+                    {(t.origin_name || t.destination_name) && (
+                      <p className="text-xs text-slate-500">{t.origin_name ?? '?'} → {t.destination_name ?? '?'}</p>
+                    )}
+                    {t.note && <p className="text-xs text-slate-500 italic">{t.note}</p>}
+                    {Array.isArray(t.items) && t.items.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {t.items.map((item: any, idx: number) => (
+                          <span key={idx} className="bg-slate-100 text-slate-700 rounded px-2 py-0.5 text-xs">
+                            {item.product_name} ×{item.quantity}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs text-slate-400">{new Date(t.created_at).toLocaleString('es-DO')}</p>
                   </div>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColor[t.status] ?? 'bg-slate-100 text-slate-600'}`}>
-                    {statusLabel[t.status] ?? t.status}
-                  </span>
                 </div>
               </Card>
             ))}
           </div>
         )
       }
+    </section>
+  );
+}
+
+export function GastosPage() {
+  const me = useMe();
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [amount, setAmount] = useState('');
+  const [category, setCategory] = useState('general');
+  const [description, setDescription] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('efectivo');
+  const [reference, setReference] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
+  const [days, setDays] = useState('30');
+
+  const role = me.data?.role ?? '';
+  const canCreate = ['administrador_general', 'encargado_sucursal', 'admin_supremo'].includes(role);
+
+  const expensesQuery = useQuery({
+    queryKey: ['expenses', days],
+    queryFn: async () => (await apiRequest<any[]>(`/expenses?days=${days}`)).data,
+    staleTime: 30000,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async () => apiRequest('/expenses', {
+      method: 'POST',
+      body: JSON.stringify({ amount: parseFloat(amount), category, description, payment_method: paymentMethod, reference: reference || null }),
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['expenses'] });
+      setShowForm(false);
+      setAmount('');
+      setDescription('');
+      setReference('');
+      setFormError(null);
+    },
+    onError: (e: any) => setFormError(e?.message ?? 'Error al registrar gasto'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => apiRequest(`/expenses/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['expenses'] }),
+  });
+
+  const totalGastos = (expensesQuery.data ?? []).reduce((sum: number, g: any) => sum + parseFloat(g.amount ?? '0'), 0);
+
+  const CATEGORIES = ['general', 'alquiler', 'nomina', 'servicios', 'insumos', 'reparaciones', 'comisiones', 'otros'];
+  const PAYMENT_METHODS = ['efectivo', 'tarjeta', 'transferencia', 'cheque'];
+
+  return (
+    <section className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <PanelTitulo titulo="Gastos" descripcion="Registro y control de gastos de la sucursal." />
+        {canCreate && (
+          <button onClick={() => setShowForm(!showForm)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+            {showForm ? 'Cancelar' : '+ Registrar gasto'}
+          </button>
+        )}
+      </div>
+
+      {showForm && canCreate && (
+        <Card className="p-5 space-y-4">
+          <p className="font-medium text-slate-700">Nuevo gasto</p>
+          {formError && <p className="text-sm text-red-600">{formError}</p>}
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="block text-sm text-slate-600 mb-1">Monto (RD$) <span className="text-red-500">*</span></label>
+              <input type="number" min="0.01" step="0.01" value={amount} onChange={e => setAmount(e.target.value)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="0.00" />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-600 mb-1">Categoría</label>
+              <select value={category} onChange={e => setCategory(e.target.value)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+              </select>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm text-slate-600 mb-1">Descripción <span className="text-red-500">*</span></label>
+              <input value={description} onChange={e => setDescription(e.target.value)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Detalles del gasto..." />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-600 mb-1">Método de pago</label>
+              <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m.charAt(0).toUpperCase() + m.slice(1)}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-slate-600 mb-1">Referencia / No. comprobante</label>
+              <input value={reference} onChange={e => setReference(e.target.value)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Opcional..." />
+            </div>
+          </div>
+          <button onClick={() => { if (!amount || !description) { setFormError('El monto y la descripción son obligatorios'); return; } createMutation.mutate(); }}
+            disabled={createMutation.isPending}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+            {createMutation.isPending ? 'Guardando...' : 'Registrar gasto'}
+          </button>
+        </Card>
+      )}
+
+      <div className="flex items-center gap-3 flex-wrap">
+        <label className="text-sm text-slate-600">Período:</label>
+        {['7', '30', '60', '90'].map(d => (
+          <button key={d} onClick={() => setDays(d)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${days === d ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
+            {d} días
+          </button>
+        ))}
+      </div>
+
+      {!expensesQuery.isLoading && (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-1">
+          <Card className="p-4">
+            <p className="text-xs text-slate-500">Total gastos ({days} días)</p>
+            <p className="text-2xl font-bold text-red-600 mt-1">RD$ {totalGastos.toLocaleString('es-DO', { minimumFractionDigits: 2 })}</p>
+            <p className="text-xs text-slate-400 mt-1">{(expensesQuery.data ?? []).length} registro(s)</p>
+          </Card>
+        </div>
+      )}
+
+      {expensesQuery.isLoading ? <LoadingState /> : expensesQuery.isError ? <ErrorState message="Error cargando gastos" /> :
+        (expensesQuery.data ?? []).length === 0 ? <EmptyState message="No hay gastos en este período." /> : (
+          <div className="space-y-2">
+            {(expensesQuery.data ?? []).map((g: any) => (
+              <Card key={g.id} className="p-4">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="space-y-0.5 flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs bg-slate-100 text-slate-600 rounded-full px-2 py-0.5 capitalize">{g.category}</span>
+                      <span className="text-xs bg-blue-50 text-blue-700 rounded-full px-2 py-0.5 capitalize">{g.payment_method}</span>
+                    </div>
+                    <p className="text-sm font-medium text-slate-800 mt-1">{g.description}</p>
+                    {g.reference && <p className="text-xs text-slate-400">Ref: {g.reference}</p>}
+                    <p className="text-xs text-slate-400">{new Date(g.created_at).toLocaleString('es-DO')} · {g.creator_name}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-base font-bold text-red-600">RD$ {parseFloat(g.amount).toLocaleString('es-DO', { minimumFractionDigits: 2 })}</span>
+                    {canCreate && (
+                      <button onClick={() => deleteMutation.mutate(g.id)} disabled={deleteMutation.isPending}
+                        className="text-slate-400 hover:text-red-500 transition-colors text-xs">✕</button>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )
+      }
+    </section>
+  );
+}
+
+export function ContabilidadPage() {
+  const [days, setDays] = useState('30');
+
+  const salesQuery = useQuery({
+    queryKey: ['accounting-sales', days],
+    queryFn: async () => (await apiRequest<any>(`/dashboard/reports/sales?days=${days}`)).data,
+    staleTime: 60000,
+  });
+
+  const expensesQuery = useQuery({
+    queryKey: ['accounting-expenses', days],
+    queryFn: async () => (await apiRequest<any[]>(`/expenses?days=${days}`)).data,
+    staleTime: 60000,
+  });
+
+  const totalSales = salesQuery.data?.totals?.revenue ?? 0;
+  const totalExpenses = (expensesQuery.data ?? []).reduce((sum: number, g: any) => sum + parseFloat(g.amount ?? '0'), 0);
+  const balance = totalSales - totalExpenses;
+
+  const expensesByCategory = (expensesQuery.data ?? []).reduce((acc: Record<string, number>, g: any) => {
+    const cat = g.category ?? 'general';
+    acc[cat] = (acc[cat] ?? 0) + parseFloat(g.amount ?? '0');
+    return acc;
+  }, {});
+
+  return (
+    <section className="space-y-5">
+      <PanelTitulo titulo="Contabilidad" descripcion="Resumen financiero: ingresos vs. gastos." />
+
+      <div className="flex items-center gap-3 flex-wrap">
+        <label className="text-sm text-slate-600">Período:</label>
+        {['7', '30', '60', '90'].map(d => (
+          <button key={d} onClick={() => setDays(d)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${days === d ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
+            {d} días
+          </button>
+        ))}
+      </div>
+
+      {(salesQuery.isLoading || expensesQuery.isLoading) ? <LoadingState /> : (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Card className="p-4 border-l-4 border-l-green-500">
+              <p className="text-xs text-slate-500">Ingresos (ventas)</p>
+              <p className="text-xl font-bold text-green-600 mt-1">RD$ {totalSales.toLocaleString('es-DO', { minimumFractionDigits: 2 })}</p>
+              <p className="text-xs text-slate-400">{salesQuery.data?.totals?.sales ?? 0} ventas</p>
+            </Card>
+            <Card className="p-4 border-l-4 border-l-red-500">
+              <p className="text-xs text-slate-500">Gastos</p>
+              <p className="text-xl font-bold text-red-600 mt-1">RD$ {totalExpenses.toLocaleString('es-DO', { minimumFractionDigits: 2 })}</p>
+              <p className="text-xs text-slate-400">{(expensesQuery.data ?? []).length} registros</p>
+            </Card>
+            <Card className={`p-4 border-l-4 ${balance >= 0 ? 'border-l-blue-500' : 'border-l-orange-500'}`}>
+              <p className="text-xs text-slate-500">Balance neto</p>
+              <p className={`text-xl font-bold mt-1 ${balance >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
+                RD$ {balance.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+              </p>
+              <p className="text-xs text-slate-400">{balance >= 0 ? 'Ganancia' : 'Déficit'}</p>
+            </Card>
+          </div>
+
+          {Object.keys(expensesByCategory).length > 0 && (
+            <Card className="p-5">
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">Gastos por categoría</h3>
+              <div className="space-y-2">
+                {Object.entries(expensesByCategory).sort((a, b) => b[1] - a[1]).map(([cat, total]) => (
+                  <div key={cat} className="flex items-center justify-between text-sm">
+                    <span className="capitalize text-slate-600">{cat}</span>
+                    <div className="flex items-center gap-3">
+                      <div className="w-32 bg-slate-100 rounded-full h-2">
+                        <div className="bg-red-400 h-2 rounded-full" style={{ width: `${Math.min(100, (total / totalExpenses) * 100)}%` }} />
+                      </div>
+                      <span className="font-medium text-slate-800 w-28 text-right">RD$ {total.toLocaleString('es-DO', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {(salesQuery.data?.byDay ?? []).length > 0 && (
+            <Card className="p-5">
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">Ingresos por día</h3>
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {(salesQuery.data?.byDay ?? []).map((d: any) => (
+                  <div key={d.date} className="flex items-center justify-between text-xs">
+                    <span className="text-slate-500">{d.date}</span>
+                    <span className="font-medium text-green-700">RD$ {parseFloat(d.revenue ?? '0').toLocaleString('es-DO', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -2337,28 +2870,9 @@ export function ConfiguracionPage() {
 
   if (branchSettingsQuery.isLoading || branchesQuery.isLoading) return <LoadingState />;
   if (branchSettingsQuery.error) return <ErrorState message={(branchSettingsQuery.error as Error).message} />;
-  const ncfStatsByType = [
-    { label: 'Consumidor final', key: 'ncf_cf' },
-    { label: 'Crédito fiscal', key: 'ncf_fiscal' },
-    { label: 'Gubernamental', key: 'ncf_gov' },
-    { label: 'Régimen especial', key: 'ncf_special' },
-  ].map((item) => {
-    const current = String(formState[`${item.key}_start`] ?? '');
-    const rangeEnd = String(formState[`${item.key}_end`] ?? '');
-    const stats = buildNcfStats(current, rangeEnd, 0);
-    return {
-      ...item,
-      stats: {
-        ...stats,
-        current,
-        rangeStart: String(formState[`${item.key}_start`] ?? ''),
-      },
-    };
-  });
-
   return (
     <section className="space-y-5">
-      <PanelTitulo titulo="Configuración" descripcion="Factura, NCF y parámetros por sucursal." />
+      <PanelTitulo titulo="Configuración" descripcion="Datos de factura y parámetros por sucursal." />
       {['admin_supremo', 'administrador_general'].includes(role) ? (
         <Card className="p-5">
           <Select label="Sucursal a configurar" value={selectedBranchId ?? ''} onChange={(e) => setSelectedBranchId(Number(e.target.value))}>
@@ -2374,30 +2888,6 @@ export function ConfiguracionPage() {
         <Input label="Teléfono" value={formState.phone ?? ''} onChange={(e) => setFormState((s) => ({ ...s, phone: e.target.value }))} />
         <Input label="Dirección" className="md:col-span-2" value={formState.address ?? ''} onChange={(e) => setFormState((s) => ({ ...s, address: e.target.value }))} />
         <Input label="Pie de factura" className="md:col-span-2" value={formState.invoice_footer ?? ''} onChange={(e) => setFormState((s) => ({ ...s, invoice_footer: e.target.value }))} />
-      </Card>
-      <Card className="p-5">
-        <h3 className="text-sm font-semibold mb-2">NCF</h3>
-        <div className="grid gap-4 md:grid-cols-2">
-          <Input label="Consumidor final · Desde" value={formState.ncf_cf_start ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_cf_start: e.target.value }))} />
-          <Input label="Consumidor final · NCF final" value={formState.ncf_cf_end ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_cf_end: e.target.value }))} />
-          <Input label="Crédito fiscal · Desde" value={formState.ncf_fiscal_start ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_fiscal_start: e.target.value }))} />
-          <Input label="Crédito fiscal · NCF final" value={formState.ncf_fiscal_end ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_fiscal_end: e.target.value }))} />
-          <Input label="Gubernamental · Desde" value={formState.ncf_gov_start ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_gov_start: e.target.value }))} />
-          <Input label="Gubernamental · NCF final" value={formState.ncf_gov_end ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_gov_end: e.target.value }))} />
-          <Input label="Régimen especial · Desde" value={formState.ncf_special_start ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_special_start: e.target.value }))} />
-          <Input label="Régimen especial · NCF final" value={formState.ncf_special_end ?? ''} onChange={(e) => setFormState((s) => ({ ...s, ncf_special_end: e.target.value }))} />
-        </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          {ncfStatsByType.map((item) => (
-            <div key={item.key} className="rounded-lg border border-slate-200 p-3 text-sm">
-              <p className="font-semibold text-slate-800">{item.label}</p>
-              <p>Desde: <strong>{item.stats.rangeStart || '-'}</strong></p>
-              <p>Hasta: <strong>{item.stats.rangeEnd || '-'}</strong></p>
-              <p>Disponibles: <strong>{item.stats.available}</strong></p>
-              <p>% usado: <strong>{item.stats.percentUsed}%</strong></p>
-            </div>
-          ))}
-        </div>
       </Card>
       <Card className="p-5">
         <h3 className="text-sm font-semibold mb-2">Preview factura/ticket</h3>

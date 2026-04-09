@@ -15,19 +15,16 @@ interface ImpersonatedBranch {
   branchCode: string;
 }
 
-const ADMIN_SUPREMO_MENU: MenuItem[] = [
-  { to: '/dashboard', label: 'Dashboard' },
-  { to: '/sucursales', label: 'Sucursales y Suscripciones' },
-  { to: '/usuarios', label: 'Usuarios' },
-];
-
 const BRANCH_MENU: MenuItem[] = [
   { to: '/dashboard', label: 'Dashboard' },
   { to: '/clientes', label: 'Clientes' },
-  { to: '/reparaciones', label: 'Reparaciones' },
+  { to: '/reparaciones', label: 'Trabajos pendientes' },
+  { to: '/trabajos-completados', label: 'Trabajos completados' },
   { to: '/inventario', label: 'Inventario' },
   { to: '/inventario/transferencias', label: 'Transferencias' },
   { to: '/ventas', label: 'Ventas' },
+  { to: '/gastos', label: 'Gastos' },
+  { to: '/contabilidad', label: 'Contabilidad' },
   { to: '/reportes', label: 'Reportes' },
   { to: '/comprobantes', label: 'Comprobantes NCF' },
   { to: '/configuracion', label: 'Configuración' },
@@ -37,42 +34,55 @@ const ADMIN_GENERAL_MENU: MenuItem[] = [
   { to: '/dashboard', label: 'Dashboard' },
   { to: '/usuarios', label: 'Usuarios' },
   { to: '/clientes', label: 'Clientes' },
-  { to: '/reparaciones', label: 'Reparaciones' },
+  { to: '/reparaciones', label: 'Trabajos pendientes' },
+  { to: '/trabajos-completados', label: 'Trabajos completados' },
   { to: '/inventario', label: 'Inventario' },
   { to: '/inventario/transferencias', label: 'Transferencias' },
   { to: '/ventas', label: 'Ventas' },
+  { to: '/gastos', label: 'Gastos' },
+  { to: '/contabilidad', label: 'Contabilidad' },
   { to: '/reportes', label: 'Reportes' },
-  { to: '/auditoria', label: 'Auditoría' },
   { to: '/comprobantes', label: 'Comprobantes NCF' },
   { to: '/configuracion', label: 'Configuración' },
 ];
 
+const ADMIN_SUPREMO_MENU_WITH_AUDIT: MenuItem[] = [
+  { to: '/dashboard', label: 'Dashboard' },
+  { to: '/sucursales', label: 'Sucursales y Suscripciones' },
+  { to: '/usuarios', label: 'Usuarios' },
+  { to: '/auditoria', label: 'Auditoría' },
+];
+
 const TECNICO_MENU: MenuItem[] = [
   { to: '/dashboard', label: 'Dashboard' },
-  { to: '/reparaciones', label: 'Reparaciones' },
+  { to: '/reparaciones', label: 'Trabajos pendientes' },
+  { to: '/trabajos-completados', label: 'Trabajos completados' },
   { to: '/clientes', label: 'Clientes' },
 ];
 
 const CAJA_MENU: MenuItem[] = [
   { to: '/ventas', label: 'Ventas' },
   { to: '/clientes', label: 'Clientes' },
+  { to: '/trabajos-completados', label: 'Trabajos completados' },
 ];
 
 const MENSAJERO_MENU: MenuItem[] = [
   { to: '/dashboard', label: 'Dashboard' },
-  { to: '/reparaciones', label: 'Reparaciones' },
+  { to: '/reparaciones', label: 'Trabajos pendientes' },
+  { to: '/trabajos-completados', label: 'Trabajos completados' },
   { to: '/clientes', label: 'Clientes' },
 ];
 
 const EMPLEADO_MENU: MenuItem[] = [
   { to: '/dashboard', label: 'Dashboard' },
-  { to: '/reparaciones', label: 'Reparaciones' },
+  { to: '/reparaciones', label: 'Trabajos pendientes' },
+  { to: '/trabajos-completados', label: 'Trabajos completados' },
   { to: '/clientes', label: 'Clientes' },
 ];
 
 function getMenuForRole(role: string): MenuItem[] {
   switch (role) {
-    case 'admin_supremo': return ADMIN_SUPREMO_MENU;
+    case 'admin_supremo': return ADMIN_SUPREMO_MENU_WITH_AUDIT;
     case 'administrador_general': return ADMIN_GENERAL_MENU;
     case 'encargado_sucursal': return BRANCH_MENU;
     case 'tecnico': return TECNICO_MENU;
