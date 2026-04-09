@@ -3438,19 +3438,29 @@ export function AuditoriaPage() {
 }
 
 export function HistorialVentasPage() {
+  const me = useMe();
+  const role = me.data?.role ?? '';
   const salesQuery = useQuery({
     queryKey: ['sales-history'],
     queryFn: async () => (await apiRequest<any[]>('/dashboard/sales')).data ?? [],
     staleTime: 30000,
   });
+  const isCashier = role === 'caja_ventas';
+  const canApproveDelete = ['administrador_general', 'encargado_sucursal', 'admin_supremo'].includes(role);
 
   const fmt = (n: string | number) => `RD$ ${parseFloat(String(n)).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
 
   return (
     <section className="space-y-5">
-      <PanelTitulo titulo="Historial de ventas" descripcion="Listado de ventas registradas." />
+      <div className="rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-slate-700 p-5 text-white shadow-lg">
+        <PanelTitulo titulo="Historial de ventas" descripcion="Consulta y gestiona movimientos registrados." />
+        <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-200">
+          <span className="rounded-full bg-white/10 px-3 py-1">Caja: editar · eliminar · reimprimir</span>
+          <span className="rounded-full bg-white/10 px-3 py-1">Admin / Encargado: aprobar eliminación</span>
+        </div>
+      </div>
       {salesQuery.isLoading ? <LoadingState /> : salesQuery.isError ? <ErrorState message="Error cargando historial de ventas" /> : (
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden border border-slate-200 shadow-sm">
           {(salesQuery.data ?? []).length === 0 ? (
             <div className="p-8 text-center text-slate-400 text-sm">No hay ventas registradas.</div>
           ) : (
@@ -3464,17 +3474,31 @@ export function HistorialVentasPage() {
                     <th className="px-4 py-3 font-medium text-right">Total</th>
                     <th className="px-4 py-3 font-medium">Pago</th>
                     <th className="px-4 py-3 font-medium">Cajero</th>
+                    <th className="px-4 py-3 font-medium text-right">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(salesQuery.data ?? []).map((sale: any) => (
-                    <tr key={sale.id} className="border-b border-slate-50 hover:bg-slate-50">
-                      <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap text-xs">{new Date(sale.created_at).toLocaleString('es-DO')}</td>
-                      <td className="px-4 py-2.5 text-slate-700 whitespace-nowrap font-mono text-xs">{sale.sale_number}</td>
-                      <td className="px-4 py-2.5 text-slate-600">{sale.customer_name ?? 'Público en general'}</td>
-                      <td className="px-4 py-2.5 text-right font-semibold text-green-700">{fmt(sale.total)}</td>
-                      <td className="px-4 py-2.5 text-slate-600 capitalize">{sale.payment_method}</td>
-                      <td className="px-4 py-2.5 text-slate-600">{sale.cashier_name}</td>
+                    <tr key={sale.id} className="border-b border-slate-50 hover:bg-slate-50/80">
+                      <td className="px-4 py-3 text-slate-500 whitespace-nowrap text-xs">{new Date(sale.created_at).toLocaleString('es-DO')}</td>
+                      <td className="px-4 py-3 text-slate-700 whitespace-nowrap font-mono text-xs">{sale.sale_number}</td>
+                      <td className="px-4 py-3 text-slate-700">{sale.customer_name ?? 'Público en general'}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-emerald-700">{fmt(sale.total)}</td>
+                      <td className="px-4 py-3 text-slate-600 capitalize">{sale.payment_method}</td>
+                      <td className="px-4 py-3 text-slate-600">{sale.cashier_name}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-2 flex-wrap">
+                          {isCashier ? (
+                            <>
+                              <button className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100">Editar</button>
+                              <button className="rounded-full border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50">Eliminar</button>
+                              <button className="rounded-full border border-indigo-200 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Reimprimir</button>
+                            </>
+                          ) : canApproveDelete ? (
+                            <button className="rounded-full bg-amber-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600">Aprobar eliminación</button>
+                          ) : null}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
