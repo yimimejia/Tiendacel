@@ -2231,55 +2231,113 @@ export function ContabilidadPage() {
     </section>
   );
 }
-function CuadreCajaModal({ onClose }: { onClose: () => void }) {
-  const qc = useQueryClient();
+const DENOMINACIONES = [
+  { label: 'Billetes', items: [2000, 1000, 500, 200, 100, 50] },
+  { label: 'Monedas', items: [25, 10, 5, 1, 0.50, 0.25] },
+];
+
+function AperturaCajaModal({ onOpened }: { onOpened: () => void }) {
   const [openingBalance, setOpeningBalance] = useState('');
-  const [actualCash, setActualCash] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const openMutation = useMutation({
+    mutationFn: async () => apiRequest('/caja/open-session', {
+      method: 'POST',
+      body: JSON.stringify({ opening_balance: parseFloat(openingBalance || '0') }),
+    }),
+    onSuccess: () => onOpened(),
+    onError: (e: any) => setError(e?.message ?? 'Error al abrir caja'),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-8 space-y-5">
+        <div className="text-center">
+          <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center text-3xl">💵</div>
+          <h2 className="text-xl font-bold text-slate-900">Apertura de caja</h2>
+          <p className="text-sm text-slate-500 mt-1">Ingresa el fondo inicial antes de comenzar a vender.</p>
+        </div>
+        {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Fondo inicial (RD$)</label>
+          <input
+            type="number" min="0" step="0.01" value={openingBalance}
+            onChange={e => setOpeningBalance(e.target.value)}
+            autoFocus
+            className="w-full border border-slate-300 rounded-xl px-4 py-3 text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+            placeholder="0.00" />
+          <p className="text-xs text-slate-400 mt-1 text-center">Puede ser RD$ 0 si la caja comienza vacía.</p>
+        </div>
+        <button
+          onClick={() => { setError(null); openMutation.mutate(); }}
+          disabled={openMutation.isPending}
+          className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50">
+          {openMutation.isPending ? 'Abriendo...' : 'Abrir caja'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CuadreCajaModal({ onClose, onCuadreGuardado }: { onClose: () => void; onCuadreGuardado?: () => void }) {
+  const qc = useQueryClient();
+  const [denomCounts, setDenomCounts] = useState<Record<number, string>>({});
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-
   const summaryQuery = useQuery({
     queryKey: ['caja-summary'],
-    queryFn: async () => (await apiRequest<{ cashSales: number; cashExpenses: number; since: string }>('/caja/summary')).data,
-    staleTime: 10000,
+    queryFn: async () => (await apiRequest<{
+      cashSales: number; cashExpenses: number; since: string;
+      openingBalance: number; sessionOpenedAt: string | null;
+    }>('/caja/summary')).data,
+    staleTime: 5000,
   });
 
-  const opening = parseFloat(openingBalance || '0') || 0;
-  const actual = parseFloat(actualCash || '0') || 0;
+  const setDenom = (denom: number, val: string) =>
+    setDenomCounts(prev => ({ ...prev, [denom]: val }));
+
+  const allDenoms = DENOMINACIONES.flatMap(g => g.items);
+  const actualCash = allDenoms.reduce((sum, d) => {
+    const qty = parseInt(denomCounts[d] || '0') || 0;
+    return sum + qty * d;
+  }, 0);
+
   const cashSales = summaryQuery.data?.cashSales ?? 0;
   const cashExpenses = summaryQuery.data?.cashExpenses ?? 0;
-  const expected = opening + cashSales - cashExpenses;
-  const difference = actual - expected;
-  const hasActual = actualCash !== '';
+  const openingBal = summaryQuery.data?.openingBalance ?? 0;
+  const expected = openingBal + cashSales - cashExpenses;
+  const difference = actualCash - expected;
+  const anyEntered = allDenoms.some(d => parseInt(denomCounts[d] || '0') > 0);
 
-  const diffColor = !hasActual ? 'text-slate-400'
+  const diffColor = !anyEntered ? 'text-slate-400'
     : Math.abs(difference) < 0.01 ? 'text-green-600'
     : difference > 0 ? 'text-yellow-600'
     : 'text-red-600';
 
-  const diffLabel = !hasActual ? '—'
-    : Math.abs(difference) < 0.01 ? 'Cuadre exacto ✓'
-    : difference > 0 ? `Sobrante RD$ ${difference.toLocaleString('es-DO', { minimumFractionDigits: 2 })} ⚠`
-    : `Faltante RD$ ${Math.abs(difference).toLocaleString('es-DO', { minimumFractionDigits: 2 })} ✗`;
+  const diffLabel = !anyEntered ? 'Ingresa las denominaciones para ver el resultado'
+    : Math.abs(difference) < 0.01 ? '✓ Cuadre exacto'
+    : difference > 0 ? `⚠ Sobrante RD$ ${difference.toLocaleString('es-DO', { minimumFractionDigits: 2 })}`
+    : `✗ Faltante RD$ ${Math.abs(difference).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
 
   const saveMutation = useMutation({
     mutationFn: async () => apiRequest('/caja/sessions', {
       method: 'POST',
       body: JSON.stringify({
-        opening_balance: opening,
-        actual_cash: actual,
+        actual_cash: actualCash,
         notes: notes || null,
-        period_from: todayStart.toISOString(),
-        period_to: new Date().toISOString(),
+        denomination_breakdown: Object.fromEntries(
+          allDenoms.filter(d => parseInt(denomCounts[d] || '0') > 0)
+            .map(d => [String(d), parseInt(denomCounts[d])])
+        ),
       }),
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['caja-sessions'] });
+      qc.invalidateQueries({ queryKey: ['my-caja-session'] });
       setSuccess(true);
+      onCuadreGuardado?.();
     },
     onError: (e: any) => setError(e?.message ?? 'Error al guardar cuadre'),
   });
@@ -2292,7 +2350,7 @@ function CuadreCajaModal({ onClose }: { onClose: () => void }) {
         <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-8 text-center space-y-4">
           <div className="mx-auto w-16 h-16 rounded-full bg-green-100 flex items-center justify-center text-3xl">✓</div>
           <h2 className="text-xl font-bold text-slate-900">Cuadre guardado</h2>
-          <p className="text-slate-600 text-sm">El cuadre de caja ha sido registrado correctamente.</p>
+          <p className="text-slate-600 text-sm">La caja ha sido cerrada y el cuadre registrado.</p>
           <button onClick={onClose} className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-sm font-medium hover:bg-slate-700">Cerrar</button>
         </div>
       </div>
@@ -2300,68 +2358,82 @@ function CuadreCajaModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md space-y-5 overflow-y-auto max-h-[95vh]">
-        <div className="flex items-center justify-between px-6 pt-6">
-          <h2 className="text-xl font-bold text-slate-900">⚖ Cuadre de caja</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-2">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-y-auto max-h-[97vh]">
+        <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-slate-100">
+          <h2 className="text-lg font-bold text-slate-900">⚖ Cuadre de caja</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">✕</button>
         </div>
 
-        <div className="px-6 space-y-4">
+        <div className="px-6 py-4 space-y-4">
           {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
 
-          <div className="bg-slate-50 rounded-xl p-4 space-y-2 text-sm">
-            <p className="font-semibold text-slate-700 mb-2">Resumen del período (hoy)</p>
+          <div className="bg-slate-50 rounded-xl p-3 text-sm space-y-1.5">
+            <p className="font-semibold text-slate-700 text-xs uppercase tracking-wide mb-2">Resumen del período</p>
+            {summaryQuery.data?.sessionOpenedAt && (
+              <div className="flex justify-between text-xs text-slate-400">
+                <span>Desde apertura</span>
+                <span>{new Date(summaryQuery.data.sessionOpenedAt).toLocaleString('es-DO')}</span>
+              </div>
+            )}
             <div className="flex justify-between">
-              <span className="text-slate-500">Ventas en efectivo</span>
+              <span className="text-slate-500">Fondo inicial</span>
+              <span className="font-medium">{summaryQuery.isLoading ? '...' : fmt(openingBal)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">+ Ventas efectivo</span>
               <span className="font-medium text-green-600">{summaryQuery.isLoading ? '...' : fmt(cashSales)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-500">Gastos de caja</span>
-              <span className="font-medium text-red-500">−{summaryQuery.isLoading ? '...' : fmt(cashExpenses)}</span>
+              <span className="text-slate-500">− Gastos de caja</span>
+              <span className="font-medium text-red-500">{summaryQuery.isLoading ? '...' : fmt(cashExpenses)}</span>
             </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Fondo inicial (RD$)</label>
-            <input type="number" min="0" step="0.01" value={openingBalance} onChange={e => setOpeningBalance(e.target.value)}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="0.00 — dinero con que abrió la caja" />
-          </div>
-
-          <div className="bg-blue-50 rounded-xl p-4 space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-slate-600">Fondo inicial</span>
-              <span>{fmt(opening)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-600">+ Ventas efectivo</span>
-              <span className="text-green-600">{fmt(cashSales)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-600">− Gastos de caja</span>
-              <span className="text-red-500">{fmt(cashExpenses)}</span>
-            </div>
-            <div className="flex justify-between font-bold border-t border-blue-200 pt-2 mt-1">
+            <div className="flex justify-between font-bold border-t border-slate-200 pt-1.5">
               <span>Efectivo esperado</span>
               <span>{fmt(expected)}</span>
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Efectivo contado (RD$) <span className="text-red-500">*</span></label>
-            <input type="number" min="0" step="0.01" value={actualCash} onChange={e => setActualCash(e.target.value)}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="0.00 — dinero que hay físicamente en caja" />
-          </div>
-
-          {hasActual && (
-            <div className={`rounded-xl p-4 text-center font-bold text-lg ${
-              Math.abs(difference) < 0.01 ? 'bg-green-50' : difference > 0 ? 'bg-yellow-50' : 'bg-red-50'
-            }`}>
-              <span className={diffColor}>{diffLabel}</span>
+          {DENOMINACIONES.map(grupo => (
+            <div key={grupo.label}>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">{grupo.label}</p>
+              <div className="space-y-1.5">
+                {grupo.items.map(denom => {
+                  const qty = parseInt(denomCounts[denom] || '0') || 0;
+                  const subtotal = qty * denom;
+                  return (
+                    <div key={denom} className="flex items-center gap-3">
+                      <span className="w-20 text-right text-sm font-medium text-slate-700 shrink-0">
+                        RD$ {denom % 1 === 0 ? denom.toLocaleString('es-DO') : denom.toFixed(2)}
+                      </span>
+                      <span className="text-slate-400 text-sm shrink-0">×</span>
+                      <input
+                        type="number" min="0" step="1"
+                        value={denomCounts[denom] ?? ''}
+                        onChange={e => setDenom(denom, e.target.value)}
+                        className="w-20 border border-slate-300 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="0" />
+                      <span className="text-slate-400 text-sm shrink-0">=</span>
+                      <span className={`flex-1 text-right text-sm font-semibold ${subtotal > 0 ? 'text-slate-800' : 'text-slate-300'}`}>
+                        {subtotal > 0 ? fmt(subtotal) : '—'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          )}
+          ))}
+
+          <div className={`rounded-xl p-4 text-center border-2 ${
+            !anyEntered ? 'border-slate-200 bg-slate-50'
+            : Math.abs(difference) < 0.01 ? 'border-green-300 bg-green-50'
+            : difference > 0 ? 'border-yellow-300 bg-yellow-50'
+            : 'border-red-300 bg-red-50'
+          }`}>
+            <p className="text-xs text-slate-500 mb-1">Total contado</p>
+            <p className="text-2xl font-bold text-slate-900">{fmt(actualCash)}</p>
+            <p className={`text-sm font-semibold mt-1 ${diffColor}`}>{diffLabel}</p>
+          </div>
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Observaciones</label>
@@ -2371,13 +2443,13 @@ function CuadreCajaModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        <div className="px-6 pb-6 flex gap-3">
+        <div className="px-6 pb-6 flex gap-3 border-t border-slate-100 pt-4">
           <button onClick={onClose} className="flex-1 py-2.5 border border-slate-300 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50">Cancelar</button>
           <button
-            onClick={() => { if (!actualCash) { setError('Ingresa el efectivo contado'); return; } setError(null); saveMutation.mutate(); }}
+            onClick={() => { if (!anyEntered) { setError('Ingresa al menos una denominación'); return; } setError(null); saveMutation.mutate(); }}
             disabled={saveMutation.isPending}
             className="flex-1 py-2.5 bg-slate-900 text-white rounded-xl text-sm font-medium hover:bg-slate-700 disabled:opacity-50">
-            {saveMutation.isPending ? 'Guardando...' : 'Guardar cuadre'}
+            {saveMutation.isPending ? 'Guardando...' : 'Cerrar caja y guardar cuadre'}
           </button>
         </div>
       </div>
@@ -2388,6 +2460,14 @@ function CuadreCajaModal({ onClose }: { onClose: () => void }) {
 export function VentasPage() {
   const me = useMe();
   const queryClient = useQueryClient();
+
+  const myCajaSession = useQuery({
+    queryKey: ['my-caja-session'],
+    queryFn: async () => (await apiRequest<any>('/caja/my-session')).data,
+    staleTime: 30000,
+    refetchOnWindowFocus: true,
+  });
+
   const [cart, setCart] = useState<Array<{
     id: number;
     product_id: number;
@@ -2404,6 +2484,8 @@ export function VentasPage() {
   }>>([]);
   const [showRepairModal, setShowRepairModal] = useState(false);
   const [showCuadreModal, setShowCuadreModal] = useState(false);
+  const hasOpenSession = myCajaSession.data != null;
+  const sessionLoading = myCajaSession.isLoading;
   const [orderSequence, setOrderSequence] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState('efectivo');
   const [mixedMethod, setMixedMethod] = useState('tarjeta');
@@ -2726,9 +2808,31 @@ export function VentasPage() {
 
   return (
     <section className="space-y-5">
-      {showCuadreModal && <CuadreCajaModal onClose={() => setShowCuadreModal(false)} />}
+      {!sessionLoading && !hasOpenSession && (
+        <AperturaCajaModal onOpened={() => {
+          queryClient.invalidateQueries({ queryKey: ['my-caja-session'] });
+          queryClient.invalidateQueries({ queryKey: ['caja-summary'] });
+        }} />
+      )}
+      {showCuadreModal && (
+        <CuadreCajaModal
+          onClose={() => setShowCuadreModal(false)}
+          onCuadreGuardado={() => {
+            queryClient.invalidateQueries({ queryKey: ['my-caja-session'] });
+            queryClient.invalidateQueries({ queryKey: ['caja-summary'] });
+            setShowCuadreModal(false);
+          }}
+        />
+      )}
       <Card className="p-4 flex items-center justify-between gap-3 flex-wrap">
-        <h2 className="text-2xl font-bold text-slate-900">POS Vendedor</h2>
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">POS Vendedor</h2>
+          {myCajaSession.data && (
+            <p className="text-xs text-green-600 mt-0.5">
+              Caja abierta · {myCajaSession.data.opener_name} · {new Date(myCajaSession.data.opened_at).toLocaleString('es-DO')} · Fondo: RD$ {parseFloat(myCajaSession.data.opening_balance).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+            </p>
+          )}
+        </div>
         <div className="flex gap-2 flex-wrap">
           <Btn variant="soft" onClick={() => setShowRepairModal(true)}>+ Añadir equipo para reparar</Btn>
           <Btn variant="soft" onClick={() => setShowCuadreModal(true)}>⚖ Cuadrar caja</Btn>
