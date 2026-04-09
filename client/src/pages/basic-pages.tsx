@@ -3487,12 +3487,25 @@ export function AuditoriaPage() {
 
 export function HistorialVentasPage() {
   const me = useMe();
+  const queryClient = useQueryClient();
   const role = me.data?.role ?? '';
+  const branchContext = queryClient.getQueryData<any>(['selected-branch-context', me.data?.id]);
+  const effectiveBranchId = branchContext?.id ?? me.data?.branch_id ?? null;
   const salesQuery = useQuery({
-    queryKey: ['sales-history'],
-    queryFn: async () => (await apiRequest<any[]>('/dashboard/sales')).data ?? [],
+    queryKey: ['sales-history', effectiveBranchId],
+    queryFn: async () => (await apiRequest<any[]>(`/dashboard/sales${effectiveBranchId ? `?branch_id=${effectiveBranchId}` : ''}`)).data ?? [],
     staleTime: 30000,
   });
+  const approveMutation = useMutation({
+    mutationFn: async (saleId: number) => apiRequest(`/sales/${saleId}/approve-deletion`, { method: 'PATCH' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sales-history'] }),
+  });
+  const deleteMutation = useMutation({
+    mutationFn: async (saleId: number) => apiRequest(`/sales/${saleId}`, { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sales-history'] }),
+  });
+  const canCashier = role === 'caja_ventas';
+  const canApprove = ['administrador_general', 'encargado_sucursal', 'admin_supremo'].includes(role);
   const isCashier = role === 'caja_ventas';
   const canApproveDelete = ['administrador_general', 'encargado_sucursal', 'admin_supremo'].includes(role);
 
@@ -3539,11 +3552,11 @@ export function HistorialVentasPage() {
                           {isCashier ? (
                             <>
                               <button className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100">Editar</button>
-                              <button className="rounded-full border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50">Eliminar</button>
+                              <button onClick={() => deleteMutation.mutate(sale.id)} className="rounded-full border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50">Eliminar</button>
                               <button className="rounded-full border border-indigo-200 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Reimprimir</button>
                             </>
                           ) : canApproveDelete ? (
-                            <button className="rounded-full bg-amber-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600">Aprobar eliminación</button>
+                            <button onClick={() => approveMutation.mutate(sale.id)} className="rounded-full bg-amber-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600">Aprobar eliminación</button>
                           ) : null}
                         </div>
                       </td>

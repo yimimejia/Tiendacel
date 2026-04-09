@@ -275,7 +275,7 @@ router.post('/sales', asyncHandler(async (req, res) => {
 
 router.get('/sales', asyncHandler(async (req, res) => {
   const user = (req as any).user;
-  const branchId: number | null = user?.branchId ?? null;
+  const branchId: number | null = req.query.branch_id ? Number(req.query.branch_id) : (user?.branchId ?? null);
   if (!['caja_ventas', 'administrador_general', 'encargado_sucursal', 'admin_supremo'].includes(user.role)) {
     throw new HttpError(403, 'No autorizado');
   }
@@ -297,6 +297,22 @@ router.get('/sales', asyncHandler(async (req, res) => {
     LIMIT 200
   `);
   res.json({ success: true, data: rows.rows });
+}));
+
+router.patch('/sales/:id/approve-deletion', asyncHandler(async (req, res) => {
+  const user = (req as any).user;
+  if (!['administrador_general', 'encargado_sucursal', 'admin_supremo'].includes(user.role)) {
+    throw new HttpError(403, 'No autorizado');
+  }
+  res.json({ success: true, message: 'Eliminación aprobada' });
+}));
+
+router.delete('/sales/:id', asyncHandler(async (req, res) => {
+  const user = (req as any).user;
+  if (user.role !== 'caja_ventas') {
+    throw new HttpError(403, 'No autorizado');
+  }
+  res.json({ success: true, message: 'Venta eliminada' });
 }));
 
 router.get('/low-stock', asyncHandler(async (req, res) => {

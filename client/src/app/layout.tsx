@@ -234,15 +234,25 @@ export function AppLayout() {
     ? impersonated.branchName
     : (isSupremo ? 'Panel Supremo' : ((me as any)?.branch_name ?? 'Mi Sucursal'));
   const visibleBranches = role === 'administrador_general' ? (accessibleBranchesQuery.data ?? []) : [];
+  const selectedBranchId = activeBranch?.id ?? ((me as any)?.branch_id ?? null);
   useEffect(() => {
     if (!visibleBranches.length) return;
-    const current = visibleBranches.find((b) => b.id === (me as any)?.branch_id) ?? visibleBranches[0] ?? null;
+    const current = visibleBranches.find((b) => b.id === selectedBranchId) ?? visibleBranches[0] ?? null;
     setActiveBranch(current);
-  }, [visibleBranches, me?.branch_id]);
+  }, [visibleBranches, selectedBranchId]);
 
   useEffect(() => {
     if (!activeBranch) return;
     queryClient.setQueryData(['selected-branch-context', me?.id], activeBranch);
+    queryClient.invalidateQueries({ queryKey: ['branch-status'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard-low-stock'] });
+    queryClient.invalidateQueries({ queryKey: ['branches'] });
+    queryClient.invalidateQueries({ queryKey: ['users'] });
+    queryClient.invalidateQueries({ queryKey: ['customers'] });
+    queryClient.invalidateQueries({ queryKey: ['repair-work-branches'] });
+    queryClient.invalidateQueries({ queryKey: ['repair-work-employees'] });
+    queryClient.invalidateQueries({ queryKey: ['repair-work-branches', role] });
   }, [activeBranch, me?.id, queryClient]);
 
   const handleExitImpersonation = () => {
