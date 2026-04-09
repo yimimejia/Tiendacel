@@ -1373,6 +1373,7 @@ export const MovimientosInventarioPage = () => <Pendiente titulo="Movimientos de
 export const TransferenciasPage = () => <Pendiente titulo="Transferencias" />;
 export function VentasPage() {
   const me = useMe();
+  const queryClient = useQueryClient();
   const [cart, setCart] = useState<Array<{
     id: number;
     product_id: number;
@@ -1396,7 +1397,7 @@ export function VentasPage() {
   const [saleType, setSaleType] = useState('contado');
   const [seller, setSeller] = useState('');
   const [customerSearch, setCustomerSearch] = useState('PORTADOR');
-  const [comprobanteType, setComprobanteType] = useState('Consumidor final');
+  const [comprobanteType, setComprobanteType] = useState('B02');
   const salesForm = useForm<{ description: string; qty: number; price: number }>({ defaultValues: { description: '', qty: 1, price: 0 } });
   const repairForm = useForm<{
     customer_name: string;
@@ -1465,7 +1466,34 @@ export function VentasPage() {
     staleTime: 15000,
   });
 
-  const comprobantes = ['Consumidor final', 'Crédito fiscal', 'Gubernamental', 'Régimen especial'];
+  const ncfSequencesQuery = useQuery({
+    queryKey: ['ncf-sequences', posBranchId],
+    enabled: me.data !== undefined && Boolean(posBranchId),
+    queryFn: async () => {
+      const suffix = posBranchId ? `?branch_id=${posBranchId}` : '';
+      return (await apiRequest<any[]>(`/ncf${suffix}`)).data ?? [];
+    },
+    staleTime: 10000,
+  });
+
+  const ALL_NCF_TYPES = [
+    { code: 'B01', label: 'Crédito Fiscal' },
+    { code: 'B02', label: 'Consumidor Final' },
+    { code: 'B03', label: 'Nota de Débito' },
+    { code: 'B04', label: 'Nota de Crédito' },
+    { code: 'B11', label: 'Comprobante de Compras' },
+    { code: 'B12', label: 'Registro Único de Ingresos' },
+    { code: 'B13', label: 'Gastos Menores' },
+    { code: 'B14', label: 'Régimen Especial' },
+    { code: 'B15', label: 'Gubernamental' },
+    { code: 'B16', label: 'Comprobante para Exportaciones' },
+  ];
+
+  const selectedNcfSeq = (ncfSequencesQuery.data as any[])?.find((s: any) => s.type === comprobanteType);
+  const previewNcf = selectedNcfSeq
+    ? (selectedNcfSeq.is_exhausted ? 'AGOTADO' : selectedNcfSeq.next_ncf)
+    : (ncfSequencesQuery.isPending ? 'Cargando...' : 'Sin configurar');
+  const comprobanteLabel = ALL_NCF_TYPES.find((t) => t.code === comprobanteType)?.label ?? comprobanteType;
   const brandOptions = Object.keys(DEVICE_MODELS_BY_BRAND);
   const selectedBrand = repairForm.watch('brand');
   const selectedModel = repairForm.watch('model');
@@ -1476,17 +1504,6 @@ export function VentasPage() {
   const repairOrderCode = `${(selectedBrand || 'EQ').slice(0, 2).toUpperCase()}-${String(orderSequence).padStart(6, '0')}`;
   const isPresetBrand = selectedBrand && selectedBrand in DEVICE_MODELS_BY_BRAND;
   const modelsForBrand = isPresetBrand ? DEVICE_MODELS_BY_BRAND[selectedBrand] : [];
-  const ncfKey = comprobanteType === 'Crédito fiscal'
-    ? 'credito_fiscal'
-    : comprobanteType === 'Gubernamental'
-      ? 'gubernamental'
-      : comprobanteType === 'Régimen especial'
-        ? 'regimen_especial'
-        : 'consumidor_final';
-  const currentNcf = (() => {
-    const settings = branchSettingsQuery.data?.feature_flags?.ncf?.[ncfKey];
-    return String(settings?.current ?? settings?.range_start ?? '');
-  })();
 
 
   const ITBIS_RATE = 0.18;
@@ -1495,13 +1512,6 @@ export function VentasPage() {
   const itbisTotal = cart.reduce((acc, item) => acc + Number(item.itbis_monto ?? 0), 0);
   const totalVenta = subtotalBruto;
   const mixedRemaining = Math.max(0, totalVenta - cashAmount);
-  const ncfData = branchSettingsQuery.data?.feature_flags?.ncf ?? {};
-  const ncfMap: Record<string, string> = {
-    'Consumidor final': String(ncfData.consumidor_final?.current ?? ncfData.consumidor_final?.range_start ?? ''),
-    'Crédito fiscal': String(ncfData.credito_fiscal?.current ?? ncfData.credito_fiscal?.range_start ?? ''),
-    'Gubernamental': String(ncfData.gubernamental?.current ?? ncfData.gubernamental?.range_start ?? ''),
-    'Régimen especial': String(ncfData.regimen_especial?.current ?? ncfData.regimen_especial?.range_start ?? ''),
-  };
   const inventoryItems = (posProductsQuery.data ?? []).map((p: any) => ({
     id: p.id,
     name: p.name,
@@ -1576,13 +1586,25 @@ export function VentasPage() {
     });
   };
 
-  const handlePrintInvoice = () => {
+  const handlePrintInvoice = async () => {
     if (cart.length === 0) {
       window.alert('No puedes registrar una venta con el carrito vacío.');
       return;
     }
     const settings = branchSettingsQuery.data ?? {};
-    const ncfLabel = ncfMap[comprobanteType] || currentNcf || '--';
+    let ncfLabel = '--';
+    try {
+      const body: any = { type: comprobanteType };
+      if (posBranchId) body.branch_id = posBranchId;
+      const res = await apiRequest<{ ncf: string }>('/ncf/next', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      ncfLabel = res.data?.ncf ?? '--';
+    } catch (err: any) {
+      window.alert(`Error al emitir NCF: ${err.message || 'No hay secuencia disponible para este tipo de comprobante. Configure la secuencia en el panel de Comprobantes.'}`);
+      return;
+    }
     const negocio = settings.business_name || settings.fiscal_name || me.data?.branch_name || 'Mi Negocio';
     const subtotalNeto = cart.reduce((acc, line) => acc + Number(line.subtotal ?? line.precio_unitario * line.cantidad), 0);
     const itbisTotal = cart.reduce((acc, line) => acc + Number(line.itbis_monto ?? 0), 0);
@@ -1612,7 +1634,7 @@ export function VentasPage() {
           </div>
           <div class="divider"></div>
           <p><strong>NCF:</strong> ${ncfLabel}</p>
-          <p><strong>Comprobante:</strong> ${comprobanteType}</p>
+          <p><strong>Comprobante:</strong> ${comprobanteLabel}</p>
           <p><strong>Cliente:</strong> ${customerSearch || 'PÚBLICO EN GENERAL'}</p>
           <p><strong>Vendedor:</strong> ${(seller || me.data?.full_name) ?? ''}</p>
           <div class="divider"></div>
@@ -1637,6 +1659,9 @@ export function VentasPage() {
     printWindow.document.close();
     printWindow.focus();
     setTimeout(() => printWindow.print(), 350);
+    setCart([]);
+    setComprobanteType('B02');
+    queryClient.invalidateQueries({ queryKey: ['ncf-sequences', posBranchId] });
   };
 
   return (
@@ -1668,7 +1693,15 @@ export function VentasPage() {
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             <Select label="Tipo de comprobante" value={comprobanteType} onChange={(e) => setComprobanteType(e.target.value)}>
-              {comprobantes.map((item) => <option key={item} value={item}>{item}</option>)}
+              {ALL_NCF_TYPES.map((t) => {
+                const seq = (ncfSequencesQuery.data as any[])?.find((s: any) => s.type === t.code);
+                const isAvailable = seq && seq.is_active && !seq.is_exhausted;
+                return (
+                  <option key={t.code} value={t.code} disabled={seq && !isAvailable}>
+                    {t.code} — {t.label}{seq ? (seq.is_exhausted ? ' (Agotado)' : ` (${seq.remaining} disp.)`) : ' (Sin configurar)'}
+                  </option>
+                );
+              })}
             </Select>
           </div>
           <Input label="Buscar producto por código, nombre o código de barras..." value={productSearch} onChange={(e) => setProductSearch(e.target.value)} />
@@ -1690,7 +1723,11 @@ export function VentasPage() {
         </Card>
 
         <Card className="p-5 space-y-3 h-fit">
-          <p className="rounded-lg border border-indigo-200 px-3 py-2 text-sm"><strong>NCF:</strong> {ncfMap[comprobanteType] ?? '--'}</p>
+          <p className={`rounded-lg border px-3 py-2 text-sm ${selectedNcfSeq?.is_low ? 'border-amber-400 bg-amber-50' : selectedNcfSeq?.is_exhausted ? 'border-red-400 bg-red-50' : 'border-indigo-200'}`}>
+            <strong>NCF:</strong> {previewNcf}
+            {selectedNcfSeq?.is_low && !selectedNcfSeq?.is_exhausted ? <span className="ml-2 text-amber-600 text-xs font-semibold">⚠ {selectedNcfSeq.remaining} restantes</span> : null}
+            {selectedNcfSeq?.is_exhausted ? <span className="ml-2 text-red-600 text-xs font-semibold">✗ Secuencia agotada</span> : null}
+          </p>
           <h3 className="text-2xl font-semibold">🛒 Resumen de compra</h3>
             <p className="text-sm text-slate-500">{cart.length === 0 ? 'El carrito está vacío — selecciona productos arriba' : `${cart.length} línea(s) en carrito`}</p>
           {cart.length > 0 ? (
@@ -1992,6 +2029,235 @@ export function ConfiguracionPage() {
         </div>
         {saveMutation.error ? <div className="mt-3"><ErrorState message={(saveMutation.error as Error).message} /></div> : null}
       </Card>
+    </section>
+  );
+}
+
+const NCF_TYPE_LIST = [
+  { code: 'B01', label: 'Crédito Fiscal' },
+  { code: 'B02', label: 'Consumidor Final' },
+  { code: 'B03', label: 'Nota de Débito' },
+  { code: 'B04', label: 'Nota de Crédito' },
+  { code: 'B11', label: 'Comprobante de Compras' },
+  { code: 'B12', label: 'Registro Único de Ingresos' },
+  { code: 'B13', label: 'Gastos Menores' },
+  { code: 'B14', label: 'Régimen Especial' },
+  { code: 'B15', label: 'Gubernamental' },
+  { code: 'B16', label: 'Comprobante para Exportaciones' },
+];
+
+export function NcfPage() {
+  const me = useMe();
+  const queryClient = useQueryClient();
+  const role = me.data?.role ?? '';
+  const isSupremo = role === 'admin_supremo';
+
+  const [localBranchId, setLocalBranchId] = useState<number | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [editSeq, setEditSeq] = useState<any>(null);
+  const [formType, setFormType] = useState('B02');
+  const [formFrom, setFormFrom] = useState(1);
+  const [formTo, setFormTo] = useState(1000);
+  const [formThreshold, setFormThreshold] = useState(10);
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const [extendId, setExtendId] = useState<number | null>(null);
+  const [extendTo, setExtendTo] = useState<number>(0);
+
+  const activeBranchId = (() => {
+    if (isSupremo) {
+      if (localBranchId) return localBranchId;
+      try {
+        const imp = sessionStorage.getItem('impersonatedBranch');
+        if (imp) return JSON.parse(imp).branchId;
+      } catch {}
+      return null;
+    }
+    return me.data?.branch_id ?? null;
+  })();
+
+  const branchesQuery = useQuery({
+    queryKey: ['branches-for-ncf'],
+    enabled: isSupremo,
+    queryFn: async () => (await apiRequest<any[]>('/branches')).data ?? [],
+    staleTime: 60000,
+  });
+
+  const sequencesQuery = useQuery({
+    queryKey: ['ncf-sequences', activeBranchId],
+    enabled: Boolean(activeBranchId),
+    queryFn: async () => (await apiRequest<any[]>(`/ncf?branch_id=${activeBranchId}`)).data ?? [],
+    staleTime: 10000,
+  });
+
+  const upsertMutation = useMutation({
+    mutationFn: async (data: any) => apiRequest('/ncf', { method: 'POST', body: JSON.stringify({ ...data, branch_id: activeBranchId }) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['ncf-sequences', activeBranchId] }); setShowForm(false); setEditSeq(null); },
+  });
+
+  const patchMutation = useMutation({
+    mutationFn: async ({ id, ...data }: any) => apiRequest(`/ncf/${id}`, { method: 'PATCH', body: JSON.stringify({ ...data, branch_id: activeBranchId }) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['ncf-sequences', activeBranchId] }); setExtendId(null); },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => apiRequest(`/ncf/${id}?branch_id=${activeBranchId}`, { method: 'DELETE' }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['ncf-sequences', activeBranchId] }); setConfirmDelete(null); },
+  });
+
+  const openCreate = () => {
+    setEditSeq(null);
+    setFormType('B02');
+    setFormFrom(1);
+    setFormTo(1000);
+    setFormThreshold(10);
+    setShowForm(true);
+  };
+
+  const handleSave = () => {
+    upsertMutation.mutate({ type: formType, sequence_from: formFrom, sequence_to: formTo, alert_threshold: formThreshold });
+  };
+
+  const sequences: any[] = sequencesQuery.data ?? [];
+
+  const getStatusBadge = (seq: any) => {
+    if (!seq.is_active) return <span className="px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-500 font-semibold">Inactivo</span>;
+    if (seq.is_exhausted) return <span className="px-2 py-0.5 text-xs rounded-full bg-red-100 text-red-700 font-semibold">Agotado</span>;
+    if (seq.is_low) return <span className="px-2 py-0.5 text-xs rounded-full bg-amber-100 text-amber-700 font-semibold">Bajo ({seq.remaining})</span>;
+    return <span className="px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-700 font-semibold">Activo</span>;
+  };
+
+  const needsBranchSelect = isSupremo && !activeBranchId;
+
+  return (
+    <section className="space-y-5">
+      <Card className="p-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Comprobantes NCF</h2>
+          {isSupremo && (
+            <div className="mt-2 min-w-[240px]">
+              <Select label="Sucursal" value={localBranchId ?? ''} onChange={(e) => setLocalBranchId(Number(e.target.value))}>
+                <option value="">Seleccionar sucursal...</option>
+                {(branchesQuery.data ?? []).map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </Select>
+            </div>
+          )}
+        </div>
+        {!needsBranchSelect && <Btn onClick={openCreate}>+ Nueva secuencia NCF</Btn>}
+      </Card>
+
+      {needsBranchSelect ? (
+        <Card className="p-8 text-center">
+          <p className="text-slate-500">Selecciona una sucursal arriba para ver y configurar sus comprobantes NCF.</p>
+        </Card>
+      ) : (
+        <>
+          {showForm && (
+            <Card className="p-5 space-y-4">
+              <h3 className="font-semibold text-slate-800 text-lg">{editSeq ? 'Editar secuencia NCF' : 'Nueva secuencia NCF'}</h3>
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                <Select label="Tipo de comprobante" value={formType} onChange={(e) => setFormType(e.target.value)} disabled={Boolean(editSeq)}>
+                  {NCF_TYPE_LIST.map((t) => <option key={t.code} value={t.code}>{t.code} — {t.label}</option>)}
+                </Select>
+                <Input label="Secuencia desde" type="number" min={1} value={formFrom} onChange={(e) => setFormFrom(Number(e.target.value))} disabled={Boolean(editSeq)} />
+                <Input label="Secuencia hasta" type="number" min={1} value={formTo} onChange={(e) => setFormTo(Number(e.target.value))} />
+                <Input label="Alerta cuando queden" type="number" min={1} value={formThreshold} onChange={(e) => setFormThreshold(Number(e.target.value))} />
+              </div>
+              {editSeq && <p className="text-xs text-slate-500">El tipo y secuencia inicial no se pueden cambiar. Usa el botón "Extender" para ampliar el rango.</p>}
+              <div className="flex gap-3">
+                <Btn onClick={handleSave} disabled={upsertMutation.isPending}>{upsertMutation.isPending ? 'Guardando...' : 'Guardar'}</Btn>
+                <Btn variant="soft" onClick={() => { setShowForm(false); setEditSeq(null); }}>Cancelar</Btn>
+              </div>
+              {upsertMutation.error ? <ErrorState message={(upsertMutation.error as Error).message} /> : null}
+            </Card>
+          )}
+
+          {extendId !== null && (
+            <Card className="p-5 space-y-4">
+              <h3 className="font-semibold text-slate-800 text-lg">Extender secuencia hasta...</h3>
+              <Input label="Nueva secuencia hasta" type="number" min={1} value={extendTo} onChange={(e) => setExtendTo(Number(e.target.value))} />
+              <div className="flex gap-3">
+                <Btn onClick={() => patchMutation.mutate({ id: extendId, sequence_to: extendTo })} disabled={patchMutation.isPending}>
+                  {patchMutation.isPending ? 'Guardando...' : 'Extender rango'}
+                </Btn>
+                <Btn variant="soft" onClick={() => setExtendId(null)}>Cancelar</Btn>
+              </div>
+              {patchMutation.error ? <ErrorState message={(patchMutation.error as Error).message} /> : null}
+            </Card>
+          )}
+
+          {confirmDelete !== null && (
+            <Card className="p-5 space-y-4 border border-red-200 bg-red-50">
+              <h3 className="font-semibold text-red-800">¿Eliminar esta secuencia NCF?</h3>
+              <p className="text-sm text-red-700">Esta acción es permanente. Los NCF ya emitidos no se verán afectados.</p>
+              <div className="flex gap-3">
+                <Btn onClick={() => deleteMutation.mutate(confirmDelete!)} disabled={deleteMutation.isPending}>
+                  {deleteMutation.isPending ? 'Eliminando...' : 'Sí, eliminar'}
+                </Btn>
+                <Btn variant="soft" onClick={() => setConfirmDelete(null)}>Cancelar</Btn>
+              </div>
+            </Card>
+          )}
+
+          {sequencesQuery.isPending ? (
+            <Card className="p-8 text-center"><p className="text-slate-500">Cargando secuencias NCF...</p></Card>
+          ) : sequences.length === 0 ? (
+            <Card className="p-8 text-center">
+              <p className="text-slate-500 mb-3">No hay secuencias NCF configuradas para esta sucursal.</p>
+              <Btn onClick={openCreate}>+ Configurar primer tipo de comprobante</Btn>
+            </Card>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {sequences.map((seq: any) => {
+                const ncfType = NCF_TYPE_LIST.find((t) => t.code === seq.type);
+                const rangeTotal = seq.sequence_to - seq.sequence_from + 1;
+                const pctUsed = rangeTotal > 0 ? Math.round(((seq.current_sequence - seq.sequence_from) / rangeTotal) * 100) : 100;
+                return (
+                  <Card key={seq.id} className={`p-4 space-y-3 ${!seq.is_active ? 'opacity-60' : ''}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-bold text-slate-900 text-xl font-mono">{seq.type}</p>
+                        <p className="text-sm text-slate-600">{ncfType?.label ?? seq.label}</p>
+                      </div>
+                      {getStatusBadge(seq)}
+                    </div>
+                    <div className="text-sm space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Próximo NCF</span>
+                        <strong className="font-mono text-indigo-700">{seq.next_ncf}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Disponibles</span>
+                        <strong>{seq.remaining.toLocaleString()} de {rangeTotal.toLocaleString()}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Rango</span>
+                        <span className="font-mono text-xs text-slate-500">{seq.type}{String(seq.sequence_from).padStart(8, '0')}→{seq.type}{String(seq.sequence_to).padStart(8, '0')}</span>
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-2 mt-2">
+                        <div
+                          className={`h-2 rounded-full transition-all ${pctUsed >= 95 ? 'bg-red-500' : pctUsed >= 75 ? 'bg-amber-400' : 'bg-green-500'}`}
+                          style={{ width: `${Math.min(100, pctUsed)}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-slate-400 text-right">{pctUsed}% utilizado · Alerta a {seq.alert_threshold} restantes</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <Btn size="sm" variant="soft" onClick={() => {
+                        setExtendTo(seq.sequence_to);
+                        setExtendId(seq.id);
+                      }}>Extender</Btn>
+                      <Btn size="sm" variant="soft" onClick={() => patchMutation.mutate({ id: seq.id, is_active: !seq.is_active })}>
+                        {seq.is_active ? 'Desactivar' : 'Activar'}
+                      </Btn>
+                      <Btn size="sm" variant="soft" onClick={() => setConfirmDelete(seq.id)}>Eliminar</Btn>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
     </section>
   );
 }

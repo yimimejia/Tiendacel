@@ -29,6 +29,7 @@ const BRANCH_MENU: MenuItem[] = [
   { to: '/inventario/transferencias', label: 'Transferencias' },
   { to: '/ventas', label: 'Ventas' },
   { to: '/reportes', label: 'Reportes' },
+  { to: '/comprobantes', label: 'Comprobantes NCF' },
   { to: '/configuracion', label: 'Configuración' },
 ];
 
@@ -42,6 +43,7 @@ const ADMIN_GENERAL_MENU: MenuItem[] = [
   { to: '/ventas', label: 'Ventas' },
   { to: '/reportes', label: 'Reportes' },
   { to: '/auditoria', label: 'Auditoría' },
+  { to: '/comprobantes', label: 'Comprobantes NCF' },
   { to: '/configuracion', label: 'Configuración' },
 ];
 

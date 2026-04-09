@@ -1,0 +1,63 @@
+Quiero que el sistema de facturación maneje los NCF de República Dominicana con los prefijos ya predeterminados por tipo de comprobante, para que yo solamente tenga que registrar la secuencia numérica autorizada por el gobierno y el sistema complete automáticamente el inicio correcto de cada NCF.
+
+Hazlo de esta manera:
+
+1. Debe existir un módulo de configuración de NCF donde yo pueda registrar por separado la numeración otorgada por la DGII para cada tipo de comprobante.
+
+2. Cada tipo de comprobante debe tener su prefijo fijo y automático, sin que el usuario tenga que escribirlo manualmente. Los tipos a manejar son estos:
+- Crédito Fiscal = B01
+- Consumidor Final = B02
+- Nota de Débito = B03
+- Nota de Crédito = B04
+- Comprobante de Compras = B11
+- Registro Único de Ingresos = B12
+- Gastos Menores = B13
+- Régimen Especial = B14
+- Gubernamental = B15
+- Comprobante para Exportaciones = B16
+
+3. En la configuración, yo solo debo introducir la parte numérica autorizada para cada tipo de NCF, por ejemplo:
+- desde
+- hasta
+- secuencia actual
+y el sistema debe completar automáticamente el código final con su prefijo correspondiente, por ejemplo:
+- B01 + 00000001
+- B02 + 00000001
+sin que el usuario tenga que escribir B01, B02, B15, etc.
+
+4. Cuando se vaya a realizar una venta o factura, el sistema debe mostrar el tipo de comprobante seleccionado con su prefijo correcto ya armado automáticamente.
+
+5. Por defecto, en ventas normales, el sistema debe seleccionar automáticamente Consumidor Final con el prefijo B02, a menos que el usuario cambie manualmente a otro tipo permitido.
+
+6. Si la venta requiere comprobante de Crédito Fiscal, entonces el sistema debe usar automáticamente el prefijo B01 y tomar la siguiente secuencia disponible de ese grupo.
+
+7. Cada tipo de comprobante debe llevar su propia secuencia independiente. Ejemplo:
+- los B01 avanzan solos
+- los B02 avanzan solos
+- los B15 avanzan solos
+No se pueden mezclar numeraciones entre tipos diferentes.
+
+8. El número completo del NCF debe generarse automáticamente al momento de facturar, uniendo:
+- el prefijo fijo del tipo
+- la secuencia numérica correspondiente
+Todo debe quedar correctamente formateado.
+
+9. El sistema debe validar que no se emita un NCF duplicado bajo ninguna circunstancia, aunque haya varias cajas o varios usuarios facturando al mismo tiempo.
+
+10. Debe existir una vista administrativa donde yo pueda:
+- crear cada rango de NCF
+- editarlo
+- activarlo o desactivarlo
+- ver el número actual
+- ver cuántos quedan disponibles
+- recibir alerta cuando el rango esté por agotarse
+
+11. En la factura y en el resumen de compra debe mostrarse claramente el NCF que corresponde según el tipo seleccionado, ya con su prefijo correcto.
+
+12. No quiero que el usuario escriba manualmente los prefijos B01, B02, B03, etc. Eso debe venir fijo internamente en el sistema según el tipo de comprobante.
+
+13. La interfaz debe ser clara: el usuario elige el tipo de comprobante por su nombre, por ejemplo “Consumidor Final” o “Crédito Fiscal”, y el sistema sabe automáticamente cuál prefijo le corresponde.
+
+14. Después de una venta con un tipo especial, por ejemplo Crédito Fiscal, el sistema debe volver automáticamente a tener por defecto Consumidor Final para la próxima venta.
+
+15. Todo esto debe quedar funcionando de forma real, no visual solamente. Debe afectar la lógica de facturación, el guardado en base de datos, la impresión y la validación interna del sistema.

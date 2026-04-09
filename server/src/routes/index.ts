@@ -13,6 +13,7 @@ import { repairsRoutes } from '../modules/repairs/routes.js';
 import { branchSettingsRoutes } from '../modules/branch-settings/routes.js';
 import { subscriptionsRoutes } from '../modules/subscriptions/routes.js';
 import { productsRoutes } from '../modules/products/routes.js';
+import { ncfRoutes } from '../modules/ncf/routes.js';
 
 const router = Router();
 
@@ -37,5 +38,6 @@ router.use('/repairs', repairsRoutes);
 router.use('/branch-settings', branchSettingsRoutes);
 router.use('/subscriptions', subscriptionsRoutes);
 router.use('/products', productsRoutes);
+router.use('/ncf', ncfRoutes);
 
 export { router as apiRouter };

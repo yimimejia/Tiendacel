@@ -69,13 +69,33 @@ PORT=8000
 SERVE_FRONTEND=false
 ```
 
+## NCF System (Comprobantes Fiscales)
+
+The system has a complete NCF (Número de Comprobante Fiscal) management system for Dominican Republic tax compliance.
+
+### DB Table: `ncf_sequences`
+Each branch configures one or more NCF types with a sequence range. The system atomically increments the sequence on each sale — no duplicates ever possible.
+
+### NCF Types Supported
+B01=Crédito Fiscal, B02=Consumidor Final, B03=Nota de Débito, B04=Nota de Crédito, B11=Comprobante de Compras, B12=Registro Único de Ingresos, B13=Gastos Menores, B14=Régimen Especial, B15=Gubernamental, B16=Comprobante para Exportaciones
+
+### NCF Format
+`{type}{8-digit-sequence}` — e.g., `B0200000001`, `B0100000042`
+
+### POS Integration
+- Dropdown shows all 10 NCF types with remaining count and availability
+- NCF preview updates live based on selected type
+- "Registrar Venta" calls `POST /api/ncf/next` atomically before printing
+- After sale: cart clears, resets to B02 (Consumidor Final), invalidates NCF cache
+- Alerts shown in the NCF box when sequence is low or exhausted
+
 ## Frontend Menu by Role
 
 - **admin_supremo**: Dashboard, Sucursales & Suscripciones, Usuarios
-- **administrador_general**: Dashboard, Usuarios, Clientes, Reparaciones, Inventario, Ventas, Reportes, Auditoría
-- **encargado_sucursal**: Dashboard, Clientes, Reparaciones, Inventario, Ventas, Reportes
+- **administrador_general**: Dashboard, Usuarios, Clientes, Reparaciones, Inventario, Ventas, Reportes, Auditoría, Comprobantes NCF, Configuración
+- **encargado_sucursal**: Dashboard, Clientes, Reparaciones, Inventario, Transferencias, Ventas, Reportes, Comprobantes NCF, Configuración
 - **tecnico**: Dashboard, Reparaciones, Clientes
-- **caja_ventas**: Dashboard, Ventas, Clientes
+- **caja_ventas**: Ventas, Clientes
 
 ## API Routes
 
@@ -89,3 +109,10 @@ SERVE_FRONTEND=false
 - `GET /api/subscriptions/:branchId/payments` — payment history
 - `POST /api/subscriptions/:branchId/payments` — record payment
 - `DELETE /api/subscriptions/payments/:paymentId` — delete payment
+- `GET /api/ncf?branch_id=X` — list NCF sequences for branch
+- `POST /api/ncf` — create/update NCF sequence (upsert by branch+type)
+- `PATCH /api/ncf/:id` — update is_active, alert_threshold, or extend sequence_to
+- `DELETE /api/ncf/:id?branch_id=X` — delete NCF sequence
+- `POST /api/ncf/next` — atomically issue next NCF (increment current_sequence)
+- `GET /api/ncf/types` — list all supported NCF type codes and labels
+- `GET/POST/PUT/DELETE /api/products?branch_id=X` — product catalog with photos, ITBIS config
