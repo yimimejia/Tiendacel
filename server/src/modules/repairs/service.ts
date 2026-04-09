@@ -150,11 +150,11 @@ export async function getRepairInvoiceInfo(repairId: number, user: RequestUser) 
     discount_amount: string; payment_method: string; ncf: string | null;
     created_at: string; cashier_name: string;
   }>(sql`
-    SELECT s.id, s.sale_number, s.total, s.tax_amount, s.discount_amount,
+    SELECT s.id, s.sale_number, s.total::text, s.tax_amount::text, s.discount::text AS discount_amount,
            s.payment_method, s.ncf, s.created_at,
            COALESCE(u.full_name, 'Sistema') AS cashier_name
     FROM sales s
-    LEFT JOIN users u ON u.id = s.cashier_id
+    LEFT JOIN users u ON u.id = s.created_by_user_id
     WHERE s.device_id = ${repair.id}
     ORDER BY s.created_at DESC
     LIMIT 1
@@ -167,7 +167,7 @@ export async function getRepairInvoiceInfo(repairId: number, user: RequestUser) 
     const itemRows = await db.execute<{
       product_name: string; quantity: string; unit_price: string; subtotal: string;
     }>(sql`
-      SELECT COALESCE(p.name, si.product_name) AS product_name,
+      SELECT COALESCE(p.name, 'Producto eliminado') AS product_name,
              si.quantity, si.unit_price, si.subtotal
       FROM sale_items si
       LEFT JOIN products p ON p.id = si.product_id

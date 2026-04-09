@@ -37,7 +37,7 @@ export const internalDeviceStatusEnum = pgEnum('internal_device_status_enum', [
 
 export const customerVisibleStatusEnum = pgEnum('customer_visible_status_enum', ['Pendiente', 'En reparación', 'Listo', 'Entregado']);
 
-export const paymentMethodEnum = pgEnum('payment_method_enum', ['efectivo', 'transferencia', 'tarjeta', 'otro']);
+export const paymentMethodEnum = pgEnum('payment_method_enum', ['efectivo', 'transferencia', 'tarjeta', 'otro', 'mixto']);
 
 export const inventoryMovementTypeEnum = pgEnum('inventory_movement_type_enum', [
   'entrada',
@@ -487,6 +487,9 @@ export const sales = pgTable(
     reference: varchar('reference', { length: 120 }),
     note: text('note'),
     createdByUserId: integer('created_by_user_id').notNull().references(() => users.id),
+    ncf: varchar('ncf', { length: 13 }),
+    taxAmount: numeric('tax_amount', { precision: 12, scale: 2 }).notNull().default('0'),
+    deviceId: integer('device_id').references(() => devices.id),
     ...timestamps,
   },
   (table) => [

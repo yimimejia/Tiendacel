@@ -235,4 +235,89 @@ inventoryRouter.post('/transfers', asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, data: created });
 }));
 
+router.post('/sales', asyncHandler(async (req, res) => {
+  const user = (req as any).user;
+  const branchId: number | null = user?.branchId ?? null;
+  if (!branchId) throw new HttpError(400, 'No tienes sucursal asignada');
+  if (!['caja_ventas', 'administrador_general', 'encargado_sucursal'].includes(user.role)) {
+    throw new HttpError(403, 'No autorizado para registrar ventas');
+  }
+  const { items, total, subtotal, tax_amount, discount, payment_method, ncf, customer_id, device_id, note } = req.body ?? {};
+  if (!total || !payment_method) throw new HttpError(400, 'Faltan datos requeridos: total y método de pago');
+  const ts = Date.now();
+  const saleNumber = `V${branchId}-${ts}`;
+  const result = await db.execute<{ id: number; sale_number: string }>(sql`
+    INSERT INTO sales (sale_number, customer_id, branch_id, subtotal, discount, total, payment_method, ncf, tax_amount, device_id, note, created_by_user_id)
+    VALUES (
+      ${saleNumber}, ${customer_id ?? null}, ${branchId},
+      ${parseFloat(subtotal ?? total)}, ${parseFloat(discount ?? '0')}, ${parseFloat(total)},
+      ${payment_method}, ${ncf ?? null}, ${parseFloat(tax_amount ?? '0')},
+      ${device_id ?? null}, ${note ?? null}, ${user.id}
+    )
+    RETURNING id, sale_number
+  `);
+  const sale = result.rows[0];
+  if (Array.isArray(items) && items.length > 0) {
+    for (const item of items) {
+      if (!item.product_id || !item.quantity || item.quantity <= 0) continue;
+      await db.execute(sql`
+        INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, subtotal)
+        VALUES (${sale.id}, ${parseInt(item.product_id)}, ${parseInt(item.quantity)}, ${parseFloat(item.unit_price)}, ${parseFloat(item.subtotal)})
+      `);
+      await db.execute(sql`
+        UPDATE inventories SET current_stock = GREATEST(0, current_stock - ${parseInt(item.quantity)}), updated_at = NOW()
+        WHERE product_id = ${parseInt(item.product_id)} AND branch_id = ${branchId}
+      `);
+    }
+  }
+  res.status(201).json({ success: true, data: sale });
+}));
+
+router.get('/sales', asyncHandler(async (req, res) => {
+  const user = (req as any).user;
+  const branchId: number | null = user?.branchId ?? null;
+  if (!['caja_ventas', 'administrador_general', 'encargado_sucursal', 'admin_supremo'].includes(user.role)) {
+    throw new HttpError(403, 'No autorizado');
+  }
+  const condition = branchId ? sql`AND s.branch_id = ${branchId}` : sql``;
+  const rows = await db.execute<{
+    id: number; sale_number: string; total: string; subtotal: string; tax_amount: string;
+    discount: string; payment_method: string; ncf: string | null; created_at: string;
+    cashier_name: string; customer_name: string;
+  }>(sql`
+    SELECT s.id, s.sale_number, s.total::text, s.subtotal::text, s.tax_amount::text,
+           s.discount::text, s.payment_method, s.ncf, s.created_at,
+           COALESCE(u.full_name, 'Sistema') AS cashier_name,
+           COALESCE(c.full_name, 'Público en general') AS customer_name
+    FROM sales s
+    LEFT JOIN users u ON u.id = s.created_by_user_id
+    LEFT JOIN customers c ON c.id = s.customer_id
+    WHERE 1=1 ${condition}
+    ORDER BY s.created_at DESC
+    LIMIT 200
+  `);
+  res.json({ success: true, data: rows.rows });
+}));
+
+router.get('/low-stock', asyncHandler(async (req, res) => {
+  const user = (req as any).user;
+  const branchId: number | null = user?.branchId ?? null;
+  if (!branchId) {
+    res.json({ success: true, data: [] });
+    return;
+  }
+  const rows = await db.execute<{
+    id: number; name: string; sku: string | null; current_stock: number; minimum_stock: number;
+  }>(sql`
+    SELECT p.id, p.name, p.sku, i.current_stock, i.minimum_stock
+    FROM products p
+    JOIN inventories i ON i.product_id = p.id AND i.branch_id = ${branchId}
+    WHERE p.is_active = true AND p.deleted_at IS NULL
+      AND (i.current_stock = 0 OR i.current_stock <= i.minimum_stock)
+    ORDER BY i.current_stock ASC, p.name ASC
+    LIMIT 50
+  `);
+  res.json({ success: true, data: rows.rows });
+}));
+
 export { router as dashboardRoutes, inventoryRouter };

@@ -317,6 +317,13 @@ export function DashboardPage() {
     refetchInterval: 60000,
   });
 
+  const lowStockQuery = useQuery({
+    queryKey: ['low-stock'],
+    enabled: !isWorker && role !== 'admin_supremo',
+    queryFn: async () => (await apiRequest<{ id: number; name: string; sku: string | null; current_stock: number; minimum_stock: number }[]>('/dashboard/low-stock')).data,
+    staleTime: 60000,
+  });
+
   const myStats = useQuery({
     queryKey: ['my-stats'],
     enabled: isWorker,
@@ -419,6 +426,28 @@ export function DashboardPage() {
               <p className="text-2xl font-bold text-slate-700">{stats?.totalRepairs ?? 0}</p>
             </Card>
           </div>
+
+          {(lowStockQuery.data?.length ?? 0) > 0 && (
+            <Card className="p-5">
+              <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                <span className="text-red-500">⚠</span> Productos agotados o con stock bajo
+                <span className="ml-auto text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-semibold">{lowStockQuery.data!.length}</span>
+              </h3>
+              <div className="divide-y divide-slate-100">
+                {lowStockQuery.data!.map((p) => (
+                  <div key={p.id} className="flex items-center justify-between py-2 text-sm">
+                    <div className="min-w-0">
+                      <span className="font-medium text-slate-800 truncate">{p.name}</span>
+                      {p.sku && <span className="ml-2 text-xs text-slate-400">{p.sku}</span>}
+                    </div>
+                    <span className={`ml-3 font-bold px-2 py-0.5 rounded-full text-xs whitespace-nowrap ${p.current_stock === 0 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {p.current_stock === 0 ? 'Agotado' : `${p.current_stock} restantes`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
         </>
       )}
     </section>
@@ -2313,6 +2342,16 @@ export function VentasPage() {
     { code: 'B16', label: 'Comprobante para Exportaciones' },
   ];
 
+  useEffect(() => {
+    const seqs = ncfSequencesQuery.data as any[] ?? [];
+    if (seqs.length === 0) return;
+    const currentExists = seqs.some((s: any) => s.type === comprobanteType && s.is_active && !s.is_exhausted);
+    if (!currentExists) {
+      const first = seqs.find((s: any) => s.is_active && !s.is_exhausted);
+      if (first) setComprobanteType(first.type);
+    }
+  }, [ncfSequencesQuery.data]);
+
   const selectedNcfSeq = (ncfSequencesQuery.data as any[])?.find((s: any) => s.type === comprobanteType);
   const previewNcf = selectedNcfSeq
     ? (selectedNcfSeq.is_exhausted ? 'AGOTADO' : selectedNcfSeq.next_ncf)
@@ -2481,6 +2520,28 @@ export function VentasPage() {
         </body>
       </html>
     `;
+    try {
+      await apiRequest('/dashboard/sales', {
+        method: 'POST',
+        body: JSON.stringify({
+          items: cart.map((line) => ({
+            product_id: line.product_id,
+            quantity: line.cantidad,
+            unit_price: line.precio_unitario,
+            subtotal: Number(line.total_linea ?? 0),
+          })),
+          total: totalVenta,
+          subtotal: subtotalNeto,
+          tax_amount: itbisTotal,
+          discount: 0,
+          payment_method: paymentMethod === 'mixto' ? 'mixto' : paymentMethod,
+          ncf: ncfLabel !== '--' ? ncfLabel : null,
+        }),
+      });
+    } catch (saveErr: any) {
+      console.error('Error guardando venta en BD:', saveErr);
+    }
+
     const printWindow = window.open('', '_blank', 'width=380,height=700');
     if (!printWindow) return;
     printWindow.document.open();
@@ -2489,10 +2550,14 @@ export function VentasPage() {
     printWindow.focus();
     setTimeout(() => printWindow.print(), 350);
     setCart([]);
-    setComprobanteType('B02');
+    const firstAvailableNcf = (ncfSequencesQuery.data as any[] ?? []).find((s: any) => s.is_active && !s.is_exhausted)?.type ?? 'B02';
+    setComprobanteType(firstAvailableNcf);
     setCashAmount(0);
     setReceivedAmount(0);
     queryClient.invalidateQueries({ queryKey: ['ncf-sequences', posBranchId] });
+    queryClient.invalidateQueries({ queryKey: ['products', posBranchId] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+    queryClient.invalidateQueries({ queryKey: ['low-stock'] });
   };
 
   return (
@@ -2546,12 +2611,14 @@ export function VentasPage() {
           )}
           <div className="grid gap-3 md:grid-cols-2">
             <Select label="Tipo de comprobante" value={comprobanteType} onChange={(e) => setComprobanteType(e.target.value)}>
-              {ALL_NCF_TYPES.map((t) => {
-                const seq = (ncfSequencesQuery.data as any[])?.find((s: any) => s.type === t.code);
-                const isAvailable = seq && seq.is_active && !seq.is_exhausted;
+              {(ncfSequencesQuery.data as any[] ?? []).length === 0 ? (
+                <option value="">Sin comprobantes configurados</option>
+              ) : (ncfSequencesQuery.data as any[] ?? []).map((seq: any) => {
+                const label = ALL_NCF_TYPES.find((t) => t.code === seq.type)?.label ?? seq.type;
+                const isAvailable = seq.is_active && !seq.is_exhausted;
                 return (
-                  <option key={t.code} value={t.code} disabled={seq && !isAvailable}>
-                    {t.code} — {t.label}{seq ? (seq.is_exhausted ? ' (Agotado)' : ` (${seq.remaining} disp.)`) : ' (Sin configurar)'}
+                  <option key={seq.type} value={seq.type} disabled={!isAvailable}>
+                    {seq.type} — {label}{seq.is_exhausted ? ' (Agotado)' : ` (${seq.remaining} disp.)`}
                   </option>
                 );
               })}
@@ -2560,17 +2627,24 @@ export function VentasPage() {
           <Input label="Buscar producto por código, nombre o código de barras..." value={productSearch} onChange={(e) => setProductSearch(e.target.value)} />
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {visibleProducts.map((product) => (
-              <Card key={product.id} className="p-3 border border-slate-200">
-                <div className="h-24 bg-slate-100 rounded-lg mb-2 overflow-hidden flex items-center justify-center">
-                  {product.photos?.[0] || product.photo ? <img src={product.photos?.[0] ?? product.photo} alt={product.name} className="h-full w-full object-cover" /> : <span className="text-slate-400 text-xs">Sin foto</span>}
-                </div>
-                <p className="font-medium text-sm">{product.name}</p>
-                <p className="text-xs text-slate-500">Stock: {product.stock}</p>
-                <p className="font-semibold text-indigo-700">RD$ {Number(product.price).toFixed(2)}</p>
-                <Btn className="mt-2 w-full" size="sm" onClick={() => addProductToCart(product)}>Agregar</Btn>
-              </Card>
-            ))}
+            {visibleProducts.map((product) => {
+              const outOfStock = product.stock <= 0;
+              return (
+                <Card key={product.id} className={`p-3 border ${outOfStock ? 'border-red-200 opacity-70' : 'border-slate-200'}`}>
+                  <div className="h-24 bg-slate-100 rounded-lg mb-2 overflow-hidden flex items-center justify-center">
+                    {product.photos?.[0] || product.photo ? <img src={product.photos?.[0] ?? product.photo} alt={product.name} className="h-full w-full object-cover" /> : <span className="text-slate-400 text-xs">Sin foto</span>}
+                  </div>
+                  <p className="font-medium text-sm">{product.name}</p>
+                  <p className={`text-xs font-medium ${outOfStock ? 'text-red-600' : 'text-slate-500'}`}>
+                    {outOfStock ? 'Sin existencias' : `Stock: ${product.stock}`}
+                  </p>
+                  <p className="font-semibold text-indigo-700">RD$ {Number(product.price).toFixed(2)}</p>
+                  <Btn className="mt-2 w-full" size="sm" onClick={() => { if (!outOfStock) addProductToCart(product); }} disabled={outOfStock}>
+                    {outOfStock ? 'Agotado' : 'Agregar'}
+                  </Btn>
+                </Card>
+              );
+            })}
           </div>
           {visibleProducts.length === 0 ? <p className="text-sm text-slate-400">No hay productos disponibles en inventario.</p> : null}
         </Card>
