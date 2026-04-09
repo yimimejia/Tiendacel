@@ -29,6 +29,8 @@ Sistema de gestión administrativa SaaS para cadenas de tiendas de reparación d
 | `encargado_sucursal` | Branch manager | Own branch only |
 | `tecnico` | Technician | Own branch only |
 | `caja_ventas` | Cashier | Own branch only |
+| `mensajero` | Messenger — can take repair work, view repairs/clients | Own branch only |
+| `empleado` | General employee — same as mensajero | Own branch only |
 
 ### Admin Supremo Users
 - **Yimi** / `YimiQ01@+` — can create more admin_supremo users

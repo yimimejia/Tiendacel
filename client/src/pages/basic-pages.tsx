@@ -268,6 +268,26 @@ export function LoginPage() {
   );
 }
 
+type DashboardStats = {
+  customers: number;
+  activeRepairs: number;
+  deliveredRepairs: number;
+  totalRepairs: number;
+  salesToday: number;
+  revenueToday: number;
+};
+
+function StatCard({ label, value, color = 'slate' }: { label: string; value: string | number; color?: string }) {
+  const borderColor = color === 'green' ? 'border-l-green-500' : color === 'blue' ? 'border-l-blue-500' : color === 'orange' ? 'border-l-orange-400' : color === 'purple' ? 'border-l-purple-500' : 'border-l-slate-400';
+  const textColor = color === 'green' ? 'text-green-600' : color === 'blue' ? 'text-blue-600' : color === 'orange' ? 'text-orange-500' : color === 'purple' ? 'text-purple-600' : 'text-slate-800';
+  return (
+    <Card className={`p-5 border-l-4 ${borderColor}`}>
+      <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">{label}</p>
+      <p className={`text-3xl font-bold ${textColor}`}>{value}</p>
+    </Card>
+  );
+}
+
 export function DashboardPage() {
   const me = useMe();
   const role = me.data?.role ?? '';
@@ -279,18 +299,12 @@ export function DashboardPage() {
     staleTime: 30000,
   });
 
-  const branches = useQuery({
-    queryKey: ['branches'],
+  const branchStats = useQuery({
+    queryKey: ['dashboard-stats'],
     enabled: role !== 'admin_supremo',
-    queryFn: async () => (await apiRequest<any[]>('/branches')).data,
-    staleTime: 60000,
-  });
-
-  const customers = useQuery({
-    queryKey: ['customers-count'],
-    enabled: role !== 'admin_supremo',
-    queryFn: async () => (await apiRequest<any[]>('/customers')).data,
-    staleTime: 60000,
+    queryFn: async () => (await apiRequest<DashboardStats>('/dashboard/stats')).data,
+    staleTime: 30000,
+    refetchInterval: 60000,
   });
 
   if (me.isLoading) return <LoadingState />;
@@ -306,15 +320,15 @@ export function DashboardPage() {
         {subscriptions.isLoading ? <LoadingState /> : (
           <div className="grid gap-4 md:grid-cols-3">
             <Card className="p-5 border-l-4 border-l-green-500">
-              <p className="text-sm text-slate-500">Al día</p>
+              <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Al día</p>
               <p className="text-3xl font-bold text-green-600">{ok}</p>
             </Card>
             <Card className="p-5 border-l-4 border-l-yellow-400">
-              <p className="text-sm text-slate-500">Pago próximo</p>
+              <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Pago próximo</p>
               <p className="text-3xl font-bold text-yellow-600">{upcoming}</p>
             </Card>
             <Card className="p-5 border-l-4 border-l-red-500">
-              <p className="text-sm text-slate-500">Vencidos</p>
+              <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Vencidos</p>
               <p className="text-3xl font-bold text-red-600">{overdue}</p>
             </Card>
           </div>
@@ -324,30 +338,31 @@ export function DashboardPage() {
     );
   }
 
+  const stats = branchStats.data;
+  const fmt = (n: number) => n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   return (
     <section className="space-y-5">
-      <PanelTitulo
-        titulo="Dashboard"
-        descripcion={role === 'caja_ventas' ? 'Resumen de operación de caja.' : 'Resumen general.'}
-      />
-      {branches.isLoading || customers.isLoading ? <LoadingState /> : (
-        <div className="grid gap-4 md:grid-cols-2">
-          {role !== 'caja_ventas' ? (
+      <PanelTitulo titulo="Dashboard" descripcion="Métricas de tu sucursal hoy." />
+      {branchStats.isLoading ? <LoadingState /> : (
+        <>
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+            <StatCard label="Clientes" value={stats?.customers ?? 0} color="blue" />
+            <StatCard label="Reparaciones activas" value={stats?.activeRepairs ?? 0} color="orange" />
+            <StatCard label="Ventas hoy" value={stats?.salesToday ?? 0} color="green" />
+            <StatCard label="Ingresos hoy" value={`RD$ ${fmt(stats?.revenueToday ?? 0)}`} color="purple" />
+          </div>
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-2">
             <Card className="p-5">
-              <p className="text-sm text-slate-500">Sucursales visibles</p>
-              <p className="text-3xl font-bold text-slate-900">{branches.data?.length ?? 0}</p>
+              <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Reparaciones entregadas</p>
+              <p className="text-2xl font-bold text-slate-700">{stats?.deliveredRepairs ?? 0}</p>
             </Card>
-          ) : (
             <Card className="p-5">
-              <p className="text-sm text-slate-500">Caja / Ventas</p>
-              <p className="text-lg font-semibold text-slate-900">Sin acceso al panel de sucursales</p>
+              <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Total reparaciones</p>
+              <p className="text-2xl font-bold text-slate-700">{stats?.totalRepairs ?? 0}</p>
             </Card>
-          )}
-          <Card className="p-5">
-            <p className="text-sm text-slate-500">Clientes</p>
-            <p className="text-3xl font-bold text-slate-900">{customers.data?.length ?? 0}</p>
-          </Card>
-        </div>
+          </div>
+        </>
       )}
     </section>
   );
@@ -844,7 +859,7 @@ export function UsuariosPage() {
 
   const allowedRoles = isSupremo
     ? allRoles
-    : allRoles.filter((r: any) => ['encargado_sucursal', 'tecnico', 'caja_ventas'].includes(r.name));
+    : allRoles.filter((r: any) => ['encargado_sucursal', 'tecnico', 'caja_ventas', 'mensajero', 'empleado'].includes(r.name));
 
   const getBranchName = (branchId: number | null) => {
     if (!branchId) return '-';
@@ -858,6 +873,8 @@ export function UsuariosPage() {
       encargado_sucursal: 'Encargado',
       tecnico: 'Técnico',
       caja_ventas: 'Caja / Ventas',
+      mensajero: 'Mensajero',
+      empleado: 'Empleado',
     };
     return map[roleName] ?? roleName;
   };
@@ -1370,7 +1387,124 @@ export function InventarioPage() {
   );
 }
 export const MovimientosInventarioPage = () => <Pendiente titulo="Movimientos de inventario" />;
-export const TransferenciasPage = () => <Pendiente titulo="Transferencias" />;
+
+type TransferRow = {
+  id: number; origin_branch_id: number; destination_branch_id: number;
+  status: string; note: string | null; created_at: string;
+  origin_name?: string; destination_name?: string; creator_name?: string;
+};
+
+export function TransferenciasPage() {
+  const me = useMe();
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [note, setNote] = useState('');
+  const [destBranchId, setDestBranchId] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const transfers = useQuery({
+    queryKey: ['inventory-transfers'],
+    queryFn: async () => (await apiRequest<TransferRow[]>('/inventory/transfers')).data,
+    staleTime: 30000,
+  });
+
+  const branches = useQuery({
+    queryKey: ['branches'],
+    queryFn: async () => (await apiRequest<any[]>('/branches')).data,
+    staleTime: 60000,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async () => apiRequest('/inventory/transfers', {
+      method: 'POST',
+      body: JSON.stringify({ destination_branch_id: parseInt(destBranchId), note }),
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['inventory-transfers'] });
+      setShowForm(false);
+      setNote('');
+      setDestBranchId('');
+      setFormError(null);
+    },
+    onError: (e: any) => setFormError(e?.message ?? 'Error al crear transferencia'),
+  });
+
+  const statusLabel: Record<string, string> = {
+    creada: 'Creada', en_transito: 'En tránsito', recibida: 'Recibida', cancelada: 'Cancelada',
+  };
+  const statusColor: Record<string, string> = {
+    creada: 'bg-blue-100 text-blue-700',
+    en_transito: 'bg-yellow-100 text-yellow-700',
+    recibida: 'bg-green-100 text-green-700',
+    cancelada: 'bg-red-100 text-red-700',
+  };
+
+  const myBranchId = me.data?.branchId;
+  const otherBranches = (branches.data ?? []).filter((b: any) => b.id !== myBranchId);
+  const canCreate = ['administrador_general', 'encargado_sucursal'].includes(me.data?.role ?? '');
+
+  return (
+    <section className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <PanelTitulo titulo="Transferencias de inventario" descripcion="Solicitudes de traslado entre sucursales." />
+        {canCreate && (
+          <button onClick={() => setShowForm(!showForm)} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+            {showForm ? 'Cancelar' : '+ Nueva transferencia'}
+          </button>
+        )}
+      </div>
+
+      {showForm && (
+        <Card className="p-5 space-y-4">
+          <p className="font-medium text-slate-700">Nueva solicitud de transferencia</p>
+          {formError && <p className="text-sm text-red-600">{formError}</p>}
+          <div>
+            <label className="block text-sm text-slate-600 mb-1">Sucursal destino</label>
+            <select value={destBranchId} onChange={e => setDestBranchId(e.target.value)}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">Selecciona sucursal...</option>
+              {otherBranches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm text-slate-600 mb-1">Nota (opcional)</label>
+            <textarea value={note} onChange={e => setNote(e.target.value)} rows={2}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Descripción de la transferencia..." />
+          </div>
+          <button onClick={() => { if (!destBranchId) { setFormError('Selecciona la sucursal destino'); return; } createMutation.mutate(); }}
+            disabled={createMutation.isPending}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+            {createMutation.isPending ? 'Enviando...' : 'Crear transferencia'}
+          </button>
+        </Card>
+      )}
+
+      {transfers.isLoading ? <LoadingState /> : transfers.isError ? <ErrorState message="Error cargando transferencias" /> :
+        (transfers.data ?? []).length === 0 ? (
+          <EmptyState message="No hay transferencias registradas." />
+        ) : (
+          <div className="space-y-3">
+            {(transfers.data ?? []).map((t) => (
+              <Card key={t.id} className="p-4">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <p className="font-medium text-slate-800 text-sm">Transferencia #{t.id}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{t.note ?? 'Sin nota'}</p>
+                    <p className="text-xs text-slate-400 mt-1">{new Date(t.created_at).toLocaleString('es-DO')}</p>
+                  </div>
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColor[t.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                    {statusLabel[t.status] ?? t.status}
+                  </span>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )
+      }
+    </section>
+  );
+}
 export function VentasPage() {
   const me = useMe();
   const queryClient = useQueryClient();
@@ -1959,8 +2093,161 @@ export function VentasPage() {
     </section>
   );
 }
-export const ReportesPage = () => <Pendiente titulo="Reportes" />;
-export const AuditoriaPage = () => <Pendiente titulo="Auditoría" />;
+type ReportDay = { date: string; salesCount: number; revenue: number; itemsSold: number };
+type ReportTotals = { sales: number; revenue: number };
+
+export function ReportesPage() {
+  const [days, setDays] = useState(30);
+  const fmt = (n: number) => n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const report = useQuery({
+    queryKey: ['reports-sales', days],
+    queryFn: async () => (await apiRequest<{ days: number; totals: ReportTotals; byDay: ReportDay[] }>(`/dashboard/reports/sales?days=${days}`)).data,
+    staleTime: 60000,
+  });
+
+  const data = report.data;
+
+  return (
+    <section className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <PanelTitulo titulo="Reportes de ventas" descripcion="Resumen de ingresos y ventas del período." />
+        <div className="flex gap-2">
+          {[7, 14, 30, 90].map(d => (
+            <button key={d} onClick={() => setDays(d)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${days === d ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:border-blue-400'}`}>
+              {d}d
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {report.isLoading ? <LoadingState /> : report.isError ? <ErrorState message="Error cargando reporte" /> : (
+        <>
+          <div className="grid gap-4 grid-cols-2">
+            <Card className="p-5 border-l-4 border-l-green-500">
+              <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Ventas en {days} días</p>
+              <p className="text-3xl font-bold text-green-600">{data?.totals.sales ?? 0}</p>
+            </Card>
+            <Card className="p-5 border-l-4 border-l-purple-500">
+              <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Ingresos en {days} días</p>
+              <p className="text-2xl font-bold text-purple-600">RD$ {fmt(data?.totals.revenue ?? 0)}</p>
+            </Card>
+          </div>
+
+          <Card className="overflow-hidden">
+            <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
+              <p className="text-sm font-medium text-slate-700">Desglose por día</p>
+            </div>
+            {(data?.byDay ?? []).length === 0 ? (
+              <div className="p-8 text-center text-slate-400 text-sm">Sin ventas en el período seleccionado.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-slate-500 border-b border-slate-100">
+                      <th className="px-4 py-3 font-medium">Fecha</th>
+                      <th className="px-4 py-3 font-medium text-right">Ventas</th>
+                      <th className="px-4 py-3 font-medium text-right">Artículos</th>
+                      <th className="px-4 py-3 font-medium text-right">Ingresos</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data?.byDay.map(row => (
+                      <tr key={row.date} className="border-b border-slate-50 hover:bg-slate-50">
+                        <td className="px-4 py-2.5 text-slate-600">{row.date}</td>
+                        <td className="px-4 py-2.5 text-right font-medium">{row.salesCount}</td>
+                        <td className="px-4 py-2.5 text-right">{row.itemsSold}</td>
+                        <td className="px-4 py-2.5 text-right font-semibold text-green-700">RD$ {fmt(row.revenue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        </>
+      )}
+    </section>
+  );
+}
+
+type AuditLogRow = {
+  id: number; action: string; entity: string; entity_id: string;
+  description: string; created_at: string; user_name: string;
+};
+
+export function AuditoriaPage() {
+  const [limit, setLimit] = useState(50);
+
+  const logs = useQuery({
+    queryKey: ['audit-logs', limit],
+    queryFn: async () => (await apiRequest<AuditLogRow[]>(`/dashboard/audit-logs?limit=${limit}`)).data,
+    staleTime: 30000,
+  });
+
+  const actionColor: Record<string, string> = {
+    login: 'bg-blue-100 text-blue-700',
+    create: 'bg-green-100 text-green-700',
+    update: 'bg-yellow-100 text-yellow-700',
+    delete: 'bg-red-100 text-red-700',
+    seed_inicial: 'bg-slate-100 text-slate-600',
+  };
+
+  const getActionColor = (action: string) => {
+    for (const key of Object.keys(actionColor)) {
+      if (action.includes(key)) return actionColor[key];
+    }
+    return 'bg-slate-100 text-slate-600';
+  };
+
+  return (
+    <section className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <PanelTitulo titulo="Auditoría" descripcion="Registro de actividades del sistema." />
+        <div className="flex gap-2">
+          {[25, 50, 100, 200].map(l => (
+            <button key={l} onClick={() => setLimit(l)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${limit === l ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-300 hover:border-slate-500'}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {logs.isLoading ? <LoadingState /> : logs.isError ? <ErrorState message="Error cargando auditoría" /> : (
+        <Card className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-slate-500 border-b border-slate-100 bg-slate-50">
+                  <th className="px-4 py-3 font-medium">Fecha</th>
+                  <th className="px-4 py-3 font-medium">Usuario</th>
+                  <th className="px-4 py-3 font-medium">Acción</th>
+                  <th className="px-4 py-3 font-medium">Entidad</th>
+                  <th className="px-4 py-3 font-medium">Descripción</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(logs.data ?? []).length === 0 ? (
+                  <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-400">Sin registros de auditoría.</td></tr>
+                ) : (logs.data ?? []).map(log => (
+                  <tr key={log.id} className="border-b border-slate-50 hover:bg-slate-50">
+                    <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap text-xs">{new Date(log.created_at).toLocaleString('es-DO')}</td>
+                    <td className="px-4 py-2.5 text-slate-700 whitespace-nowrap">{log.user_name}</td>
+                    <td className="px-4 py-2.5"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getActionColor(log.action)}`}>{log.action}</span></td>
+                    <td className="px-4 py-2.5 text-slate-600">{log.entity}{log.entity_id ? ` #${log.entity_id}` : ''}</td>
+                    <td className="px-4 py-2.5 text-slate-600 max-w-xs truncate">{log.description}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </section>
+  );
+}
 export const ConsultaReparacionPage = () => <Pendiente titulo="Consulta pública" />;
 export const ReparacionDetallePage = () => <Pendiente titulo="Detalle de reparación" />;
 

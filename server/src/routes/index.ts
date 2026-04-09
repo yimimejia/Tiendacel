@@ -14,6 +14,7 @@ import { branchSettingsRoutes } from '../modules/branch-settings/routes.js';
 import { subscriptionsRoutes } from '../modules/subscriptions/routes.js';
 import { productsRoutes } from '../modules/products/routes.js';
 import { ncfRoutes } from '../modules/ncf/routes.js';
+import { dashboardRoutes, inventoryRouter } from '../modules/dashboard/routes.js';
 
 const router = Router();
 
@@ -39,5 +40,7 @@ router.use('/branch-settings', branchSettingsRoutes);
 router.use('/subscriptions', subscriptionsRoutes);
 router.use('/products', productsRoutes);
 router.use('/ncf', ncfRoutes);
+router.use('/dashboard', dashboardRoutes);
+router.use('/inventory', inventoryRouter);
 
 export { router as apiRouter };

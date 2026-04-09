@@ -82,7 +82,7 @@ export async function getAssignableTechnicians(branchId: number) {
     .select({ id: users.id, fullName: users.fullName, branchId: users.branchId, roleName: roles.name })
     .from(users)
     .innerJoin(roles, eq(users.roleId, roles.id))
-    .where(and(eq(users.isActive, true), eq(users.branchId, branchId), inArray(roles.name, ['tecnico', 'encargado_sucursal', 'caja_ventas', 'administrador_general'])));
+    .where(and(eq(users.isActive, true), eq(users.branchId, branchId), inArray(roles.name, ['tecnico', 'encargado_sucursal', 'caja_ventas', 'administrador_general', 'mensajero', 'empleado'])));
 
   return rows.map((row) => ({
     id: row.id,
@@ -114,7 +114,7 @@ async function validateTechnicianForBranch(technicianId: number, branchId: numbe
     throw new HttpError(400, 'El técnico debe pertenecer a la misma sucursal de la reparación');
   }
 
-  if (!['tecnico', 'encargado_sucursal', 'caja_ventas', 'administrador_general'].includes(employee.roleName)) {
+  if (!['tecnico', 'encargado_sucursal', 'caja_ventas', 'administrador_general', 'mensajero', 'empleado'].includes(employee.roleName)) {
     throw new HttpError(400, 'El usuario seleccionado no puede recibir reparaciones');
   }
 
@@ -122,8 +122,8 @@ async function validateTechnicianForBranch(technicianId: number, branchId: numbe
 }
 
 export async function takeRepairWork(repairId: number, user: RequestUser) {
-  if (user.role !== 'tecnico') {
-    throw new HttpError(403, 'Solo técnicos pueden tomar trabajo');
+  if (!['tecnico', 'mensajero', 'empleado', 'encargado_sucursal'].includes(user.role)) {
+    throw new HttpError(403, 'No tienes permiso para tomar trabajos');
   }
 
   const repair = await getRepairById(repairId);

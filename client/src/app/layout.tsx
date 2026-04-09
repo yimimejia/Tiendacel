@@ -58,6 +58,18 @@ const CAJA_MENU: MenuItem[] = [
   { to: '/clientes', label: 'Clientes' },
 ];
 
+const MENSAJERO_MENU: MenuItem[] = [
+  { to: '/dashboard', label: 'Dashboard' },
+  { to: '/reparaciones', label: 'Reparaciones' },
+  { to: '/clientes', label: 'Clientes' },
+];
+
+const EMPLEADO_MENU: MenuItem[] = [
+  { to: '/dashboard', label: 'Dashboard' },
+  { to: '/reparaciones', label: 'Reparaciones' },
+  { to: '/clientes', label: 'Clientes' },
+];
+
 function getMenuForRole(role: string): MenuItem[] {
   switch (role) {
     case 'admin_supremo': return ADMIN_SUPREMO_MENU;
@@ -65,6 +77,8 @@ function getMenuForRole(role: string): MenuItem[] {
     case 'encargado_sucursal': return BRANCH_MENU;
     case 'tecnico': return TECNICO_MENU;
     case 'caja_ventas': return CAJA_MENU;
+    case 'mensajero': return MENSAJERO_MENU;
+    case 'empleado': return EMPLEADO_MENU;
     default: return BRANCH_MENU;
   }
 }
@@ -76,6 +90,8 @@ function getRoleLabel(role: string): string {
     case 'encargado_sucursal': return 'Encargado';
     case 'tecnico': return 'Técnico';
     case 'caja_ventas': return 'Caja / Ventas';
+    case 'mensajero': return 'Mensajero';
+    case 'empleado': return 'Empleado';
     default: return role;
   }
 }
@@ -143,8 +159,9 @@ export function AppLayout() {
     queryKey: ['branch-status'],
     enabled: !!me && !isSupremo,
     queryFn: async () => (await apiRequest<{ isPaused: boolean }>('/subscriptions/branch-status')).data,
-    staleTime: 60000,
-    refetchInterval: 120000,
+    staleTime: 20000,
+    refetchInterval: 20000,
+    refetchOnWindowFocus: true,
   });
 
   const isPaused = !isSupremo && branchStatusQuery.data?.isPaused === true;

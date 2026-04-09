@@ -16,7 +16,7 @@ router.use(authMiddleware);
 
 router.get('/', asyncHandler(listRepairsController));
 router.get('/assignable-technicians', asyncHandler(listAssignableTechniciansController));
-router.post('/:id/take-work', roleMiddleware(['tecnico']), validateRequest({ params: repairIdParamSchema }), asyncHandler(takeRepairWorkController));
+router.post('/:id/take-work', roleMiddleware(['tecnico', 'mensajero', 'empleado', 'encargado_sucursal']), validateRequest({ params: repairIdParamSchema }), asyncHandler(takeRepairWorkController));
 router.patch(
   '/:id/assignment',
   roleMiddleware(['administrador_general', 'encargado_sucursal']),
