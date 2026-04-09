@@ -2561,12 +2561,12 @@ export function VentasPage() {
         <head>
           <title>Factura de reparación</title>
           <style>
-            body{font-family: Arial, sans-serif; font-size:12px; width:80mm; margin:0; padding:10px; font-weight:700;}
-            h1,h2,p{margin:0 0 4px 0; font-weight:700;}
+            body{font-family: Arial, sans-serif; font-size:16px; width:80mm; margin:0; padding:14px 12px; font-weight:700; line-height:1.25;}
+            h1,h2,p{margin:0 0 6px 0; font-weight:700;}
             .center{text-align:center;}
             .row{display:flex; justify-content:space-between; gap:10px;}
             .divider{border-top:1px dashed #000; margin:8px 0;}
-            .title{font-size:22px; font-weight:900;}
+            .title{font-size:28px; font-weight:900;}
           </style>
         </head>
         <body>
