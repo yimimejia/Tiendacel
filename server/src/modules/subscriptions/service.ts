@@ -2,6 +2,7 @@ import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { branches, subscriptionPayments, subscriptions } from '../../db/schema.js';
 import { HttpError } from '../../utils/http-error.js';
+import { broadcastToBranch } from '../../services/sse-broadcaster.js';
 
 function getPaymentStatus(nextDueDateStr: string, isPaused: boolean): 'rojo' | 'amarillo' | 'verde' | 'pausado' {
   if (isPaused) return 'pausado';
@@ -132,6 +133,8 @@ export async function pauseSubscription(branchId: number, pause: boolean) {
     .set({ isPaused: pause, updatedAt: new Date() })
     .where(eq(subscriptions.id, existing.id))
     .returning();
+
+  broadcastToBranch(branchId, pause ? 'branch_paused' : 'branch_resumed', { branchId, isPaused: pause });
 
   return { ...updated, status: getPaymentStatus(updated.nextDueDate, updated.isPaused) };
 }

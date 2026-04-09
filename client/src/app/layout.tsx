@@ -1,8 +1,9 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useMe, useLogout } from '@/features/auth/use-auth';
-import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { apiRequest } from '@/lib/api';
+import { useState, useEffect, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiRequest, getAccessToken } from '@/lib/api';
+import { clientEnv } from '@/config/env';
 
 interface MenuItem {
   to: string;
@@ -147,8 +148,10 @@ export function AppLayout() {
   const navigate = useNavigate();
   const { data: me } = useMe();
   const logoutMutation = useLogout();
+  const queryClient = useQueryClient();
   const [impersonated, setImpersonated] = useState<ImpersonatedBranch | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const sseRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
     const stored = sessionStorage.getItem('impersonatedBranch');
@@ -156,6 +159,38 @@ export function AppLayout() {
       try { setImpersonated(JSON.parse(stored)); } catch {}
     }
   }, []);
+
+  useEffect(() => {
+    const role = me?.role ?? '';
+    const isSupremo = role === 'admin_supremo';
+    if (!me || isSupremo) return;
+
+    const token = getAccessToken();
+    if (!token) return;
+
+    const url = `${clientEnv.apiUrl}/subscriptions/events?token=${encodeURIComponent(token)}`;
+    const evtSource = new EventSource(url);
+    sseRef.current = evtSource;
+
+    evtSource.addEventListener('branch_paused', () => {
+      queryClient.setQueryData(['branch-status'], { isPaused: true });
+      window.location.reload();
+    });
+
+    evtSource.addEventListener('branch_resumed', () => {
+      queryClient.setQueryData(['branch-status'], { isPaused: false });
+      window.location.reload();
+    });
+
+    evtSource.onerror = () => {
+      evtSource.close();
+    };
+
+    return () => {
+      evtSource.close();
+      sseRef.current = null;
+    };
+  }, [me?.id, me?.role]);
 
   const role = me?.role ?? '';
   const isSupremo = role === 'admin_supremo';

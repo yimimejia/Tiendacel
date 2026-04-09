@@ -15,7 +15,8 @@ export async function authMiddleware(req: Request, _res: Response, next: NextFun
     const authHeader = req.headers.authorization;
     const tokenFromHeader = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
     const tokenFromCookie = req.cookies?.access_token as string | undefined;
-    const token = tokenFromHeader ?? tokenFromCookie;
+    const tokenFromQuery = typeof req.query?.token === 'string' ? req.query.token : null;
+    const token = tokenFromHeader ?? tokenFromCookie ?? tokenFromQuery;
 
     if (!token) {
       throw new HttpError(401, 'No autenticado');
