@@ -101,6 +101,23 @@ B01=Crédito Fiscal, B02=Consumidor Final, B03=Nota de Débito, B04=Nota de Cré
 - **empleado**: Dashboard, Trabajos pendientes, Trabajos completados, Clientes
 - **caja_ventas**: Ventas, Clientes, Trabajos completados
 
+## Branch Context Switching (Admin General)
+
+The `administrador_general` role can switch between branches using a dropdown in the sidebar. The switch is stored in `sessionStorage` under `impersonatedBranch` and triggers a page reload. All major pages read from this key to determine the effective branch:
+- Dashboard (stats, low-stock)
+- Inventario, Ventas/POS, Historial de ventas
+- Gastos, Contabilidad, Reportes
+- Usuarios, Comprobantes NCF
+
+Backend endpoints (`/dashboard/stats`, `/dashboard/low-stock`, `/dashboard/reports/sales`, `/dashboard/audit-logs`, `/expenses`) accept an optional `?branch_id=X` parameter, restricted to `admin_supremo` and `administrador_general` roles only.
+
+## Sale Deletion Flow
+
+- **Cajero (caja_ventas)**: Can click "Eliminar" on their sales in the historial
+- **Admin/Encargado**: Can click "Aprobar eliminación" to confirm and execute deletion
+- Both actions: delete the sale record, remove sale items, and restore product inventory
+- API routes: `PATCH /api/dashboard/sales/:id/approve-deletion` and `DELETE /api/dashboard/sales/:id`
+
 ## New Pages (2026-04)
 
 - `/reparaciones` → "Trabajos pendientes" — card layout, repair status badge, view-problem modal, assign-employee modal (fetches technicians for that repair's branch), status-update modal (pick any status including "Entregado")

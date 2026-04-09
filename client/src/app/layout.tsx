@@ -165,8 +165,6 @@ export function AppLayout() {
   const [impersonated, setImpersonated] = useState<ImpersonatedBranch | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const sseRef = useRef<EventSource | null>(null);
-  const [activeBranch, setActiveBranch] = useState<BranchOption | null>(null);
-
   useEffect(() => {
     const stored = sessionStorage.getItem('impersonatedBranch');
     if (stored) {
@@ -230,30 +228,15 @@ export function AppLayout() {
 
   const effectiveRole = isImpersonating ? 'administrador_general' : role;
   const menu = isImpersonating ? ADMIN_GENERAL_MENU : getMenuForRole(role);
+  const isAdminGeneral = role === 'administrador_general';
+  const adminGeneralBranchName = isAdminGeneral && impersonated ? impersonated.branchName : null;
   const sidebarTitle = isImpersonating
-    ? impersonated.branchName
-    : (isSupremo ? 'Panel Supremo' : ((me as any)?.branch_name ?? 'Mi Sucursal'));
-  const visibleBranches = role === 'administrador_general' ? (accessibleBranchesQuery.data ?? []) : [];
-  const selectedBranchId = activeBranch?.id ?? ((me as any)?.branch_id ?? null);
-  useEffect(() => {
-    if (!visibleBranches.length) return;
-    const current = visibleBranches.find((b) => b.id === selectedBranchId) ?? visibleBranches[0] ?? null;
-    setActiveBranch(current);
-  }, [visibleBranches, selectedBranchId]);
-
-  useEffect(() => {
-    if (!activeBranch) return;
-    queryClient.setQueryData(['selected-branch-context', me?.id], activeBranch);
-    queryClient.invalidateQueries({ queryKey: ['branch-status'] });
-    queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
-    queryClient.invalidateQueries({ queryKey: ['dashboard-low-stock'] });
-    queryClient.invalidateQueries({ queryKey: ['branches'] });
-    queryClient.invalidateQueries({ queryKey: ['users'] });
-    queryClient.invalidateQueries({ queryKey: ['customers'] });
-    queryClient.invalidateQueries({ queryKey: ['repair-work-branches'] });
-    queryClient.invalidateQueries({ queryKey: ['repair-work-employees'] });
-    queryClient.invalidateQueries({ queryKey: ['repair-work-branches', role] });
-  }, [activeBranch, me?.id, queryClient]);
+    ? impersonated!.branchName
+    : adminGeneralBranchName
+      ? adminGeneralBranchName
+      : (isSupremo ? 'Panel Supremo' : ((me as any)?.branch_name ?? 'Mi Sucursal'));
+  const visibleBranches = isAdminGeneral ? (accessibleBranchesQuery.data ?? []) : [];
+  const adminSelectedId = impersonated?.branchId ?? (me as any)?.branch_id ?? null;
 
   const handleExitImpersonation = () => {
     sessionStorage.removeItem('impersonatedBranch');
@@ -272,15 +255,23 @@ export function AppLayout() {
           <p className="mt-0.5 text-xs text-slate-400">
             {isImpersonating ? 'Vista Admin · ' + impersonated.branchCode : getRoleLabel(role)}
           </p>
-          {role === 'administrador_general' && !isImpersonating && visibleBranches.length > 0 && (
+          {isAdminGeneral && visibleBranches.length > 0 && (
             <div className="mt-3">
               <select
-                value={activeBranch?.id ?? ''}
+                value={adminSelectedId ?? ''}
                 onChange={(e) => {
                   const branchId = Number(e.target.value);
                   const branch = visibleBranches.find((b) => b.id === branchId) ?? null;
-                  setActiveBranch(branch);
-                  queryClient.setQueryData(['selected-branch-context', me?.id], branch);
+                  if (branch) {
+                    sessionStorage.setItem('impersonatedBranch', JSON.stringify({
+                      branchId: branch.id,
+                      branchName: branch.name,
+                      branchCode: branch.name,
+                    }));
+                  } else {
+                    sessionStorage.removeItem('impersonatedBranch');
+                  }
+                  window.location.reload();
                 }}
                 className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-white outline-none"
               >

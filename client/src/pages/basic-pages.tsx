@@ -302,6 +302,18 @@ export function DashboardPage() {
   const role = me.data?.role ?? '';
   const isWorker = WORKER_ONLY_ROLES.includes(role);
 
+  const dashBranchId = (() => {
+    if (['admin_supremo', 'administrador_general'].includes(role)) {
+      try {
+        const stored = sessionStorage.getItem('impersonatedBranch');
+        if (stored) return JSON.parse(stored)?.branchId ?? null;
+      } catch {}
+      if (role === 'admin_supremo') return null;
+    }
+    return me.data?.branch_id ?? null;
+  })();
+  const branchSuffix = dashBranchId ? `?branch_id=${dashBranchId}` : '';
+
   const subscriptions = useQuery({
     queryKey: ['subscriptions'],
     enabled: role === 'admin_supremo',
@@ -310,17 +322,17 @@ export function DashboardPage() {
   });
 
   const branchStats = useQuery({
-    queryKey: ['dashboard-stats'],
+    queryKey: ['dashboard-stats', dashBranchId],
     enabled: !isWorker && role !== 'admin_supremo',
-    queryFn: async () => (await apiRequest<DashboardStats>('/dashboard/stats')).data,
+    queryFn: async () => (await apiRequest<DashboardStats>(`/dashboard/stats${branchSuffix}`)).data,
     staleTime: 30000,
     refetchInterval: 60000,
   });
 
   const lowStockQuery = useQuery({
-    queryKey: ['low-stock'],
+    queryKey: ['low-stock', dashBranchId],
     enabled: !isWorker && role !== 'admin_supremo',
-    queryFn: async () => (await apiRequest<{ id: number; name: string; sku: string | null; current_stock: number; minimum_stock: number }[]>('/dashboard/low-stock')).data,
+    queryFn: async () => (await apiRequest<{ id: number; name: string; sku: string | null; current_stock: number; minimum_stock: number }[]>(`/dashboard/low-stock${branchSuffix}`)).data,
     staleTime: 60000,
   });
 
@@ -884,14 +896,14 @@ export function UsuariosPage() {
     }
   }, []);
 
-  const isImpersonating = role === 'admin_supremo' && impersonatedBranchId !== null;
-  const effectiveRole = isImpersonating ? 'administrador_general' : role;
+  const isImpersonating = ['admin_supremo', 'administrador_general'].includes(role) && impersonatedBranchId !== null;
+  const effectiveRole = isImpersonating && role === 'admin_supremo' ? 'administrador_general' : role;
   const effectiveBranchId = isImpersonating ? impersonatedBranchId : (me.data?.branch_id ?? null);
 
   const list = useQuery({
     queryKey: ['users', effectiveRole, effectiveBranchId],
     queryFn: async () => {
-      const query = isImpersonating && effectiveBranchId ? `?branch_id=${effectiveBranchId}` : '';
+      const query = effectiveBranchId ? `?branch_id=${effectiveBranchId}` : '';
       return (await apiRequest<any[]>(`/users${query}`)).data;
     },
     staleTime: 30000,
@@ -1660,12 +1672,12 @@ export function InventarioPage() {
 
   const role = me.data?.role ?? '';
   const invBranchId = (() => {
-    if (role === 'admin_supremo') {
+    if (['admin_supremo', 'administrador_general'].includes(role)) {
       try {
         const stored = sessionStorage.getItem('impersonatedBranch');
         if (stored) return JSON.parse(stored)?.branchId ?? null;
       } catch {}
-      return null;
+      if (role === 'admin_supremo') return null;
     }
     return me.data?.branch_id ?? null;
   })();
@@ -2031,9 +2043,21 @@ export function GastosPage() {
   const role = me.data?.role ?? '';
   const canCreate = ['administrador_general', 'encargado_sucursal', 'admin_supremo', 'caja_ventas'].includes(role);
 
+  const gastosBranchId = (() => {
+    if (['admin_supremo', 'administrador_general'].includes(role)) {
+      try {
+        const stored = sessionStorage.getItem('impersonatedBranch');
+        if (stored) return JSON.parse(stored)?.branchId ?? null;
+      } catch {}
+      if (role === 'admin_supremo') return null;
+    }
+    return me.data?.branch_id ?? null;
+  })();
+  const gastosBranchSuffix = gastosBranchId ? `&branch_id=${gastosBranchId}` : '';
+
   const expensesQuery = useQuery({
-    queryKey: ['expenses', days],
-    queryFn: async () => (await apiRequest<any[]>(`/expenses?days=${days}`)).data,
+    queryKey: ['expenses', days, gastosBranchId],
+    queryFn: async () => (await apiRequest<any[]>(`/expenses?days=${days}${gastosBranchSuffix}`)).data,
     staleTime: 30000,
   });
 
@@ -2182,17 +2206,30 @@ export function GastosPage() {
 }
 
 export function ContabilidadPage() {
+  const me = useMe();
   const [days, setDays] = useState('30');
+  const contRole = me.data?.role ?? '';
+  const contBranchId = (() => {
+    if (['admin_supremo', 'administrador_general'].includes(contRole)) {
+      try {
+        const stored = sessionStorage.getItem('impersonatedBranch');
+        if (stored) return JSON.parse(stored)?.branchId ?? null;
+      } catch {}
+      if (contRole === 'admin_supremo') return null;
+    }
+    return me.data?.branch_id ?? null;
+  })();
+  const contBranchSuffix = contBranchId ? `&branch_id=${contBranchId}` : '';
 
   const salesQuery = useQuery({
-    queryKey: ['accounting-sales', days],
-    queryFn: async () => (await apiRequest<any>(`/dashboard/reports/sales?days=${days}`)).data,
+    queryKey: ['accounting-sales', days, contBranchId],
+    queryFn: async () => (await apiRequest<any>(`/dashboard/reports/sales?days=${days}${contBranchSuffix}`)).data,
     staleTime: 60000,
   });
 
   const expensesQuery = useQuery({
-    queryKey: ['accounting-expenses', days],
-    queryFn: async () => (await apiRequest<any[]>(`/expenses?days=${days}`)).data,
+    queryKey: ['accounting-expenses', days, contBranchId],
+    queryFn: async () => (await apiRequest<any[]>(`/expenses?days=${days}${contBranchSuffix}`)).data,
     staleTime: 60000,
   });
 
@@ -2578,12 +2615,12 @@ export function VentasPage() {
 
   const posRole = me.data?.role ?? '';
   const posBranchId = (() => {
-    if (posRole === 'admin_supremo') {
+    if (['admin_supremo', 'administrador_general'].includes(posRole)) {
       try {
         const stored = sessionStorage.getItem('impersonatedBranch');
         if (stored) return JSON.parse(stored)?.branchId ?? null;
       } catch {}
-      return null;
+      if (posRole === 'admin_supremo') return null;
     }
     return me.data?.branch_id ?? null;
   })();
@@ -3333,12 +3370,25 @@ type ReportDay = { date: string; salesCount: number; revenue: number; itemsSold:
 type ReportTotals = { sales: number; revenue: number };
 
 export function ReportesPage() {
+  const me = useMe();
   const [days, setDays] = useState(30);
   const fmt = (n: number) => n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const repRole = me.data?.role ?? '';
+  const repBranchId = (() => {
+    if (['admin_supremo', 'administrador_general'].includes(repRole)) {
+      try {
+        const stored = sessionStorage.getItem('impersonatedBranch');
+        if (stored) return JSON.parse(stored)?.branchId ?? null;
+      } catch {}
+      if (repRole === 'admin_supremo') return null;
+    }
+    return me.data?.branch_id ?? null;
+  })();
+  const repBranchSuffix = repBranchId ? `&branch_id=${repBranchId}` : '';
 
   const report = useQuery({
-    queryKey: ['reports-sales', days],
-    queryFn: async () => (await apiRequest<{ days: number; totals: ReportTotals; byDay: ReportDay[] }>(`/dashboard/reports/sales?days=${days}`)).data,
+    queryKey: ['reports-sales', days, repBranchId],
+    queryFn: async () => (await apiRequest<{ days: number; totals: ReportTotals; byDay: ReportDay[] }>(`/dashboard/reports/sales?days=${days}${repBranchSuffix}`)).data,
     staleTime: 60000,
   });
 
@@ -3489,19 +3539,27 @@ export function HistorialVentasPage() {
   const me = useMe();
   const queryClient = useQueryClient();
   const role = me.data?.role ?? '';
-  const branchContext = queryClient.getQueryData<any>(['selected-branch-context', me.data?.id]);
-  const effectiveBranchId = branchContext?.id ?? me.data?.branch_id ?? null;
+  const effectiveBranchId = (() => {
+    if (['admin_supremo', 'administrador_general'].includes(role)) {
+      try {
+        const stored = sessionStorage.getItem('impersonatedBranch');
+        if (stored) return JSON.parse(stored)?.branchId ?? null;
+      } catch {}
+      if (role === 'admin_supremo') return null;
+    }
+    return me.data?.branch_id ?? null;
+  })();
   const salesQuery = useQuery({
     queryKey: ['sales-history', effectiveBranchId],
     queryFn: async () => (await apiRequest<any[]>(`/dashboard/sales${effectiveBranchId ? `?branch_id=${effectiveBranchId}` : ''}`)).data ?? [],
     staleTime: 30000,
   });
   const approveMutation = useMutation({
-    mutationFn: async (saleId: number) => apiRequest(`/sales/${saleId}/approve-deletion`, { method: 'PATCH' }),
+    mutationFn: async (saleId: number) => apiRequest(`/dashboard/sales/${saleId}/approve-deletion`, { method: 'PATCH' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sales-history'] }),
   });
   const deleteMutation = useMutation({
-    mutationFn: async (saleId: number) => apiRequest(`/sales/${saleId}`, { method: 'DELETE' }),
+    mutationFn: async (saleId: number) => apiRequest(`/dashboard/sales/${saleId}`, { method: 'DELETE' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sales-history'] }),
   });
   const canCashier = role === 'caja_ventas';
@@ -3732,13 +3790,13 @@ export function NcfPage() {
   const [extendTo, setExtendTo] = useState<number>(0);
 
   const activeBranchId = (() => {
-    if (isSupremo) {
+    if (isSupremo || role === 'administrador_general') {
       if (localBranchId) return localBranchId;
       try {
         const imp = sessionStorage.getItem('impersonatedBranch');
         if (imp) return JSON.parse(imp).branchId;
       } catch {}
-      return null;
+      if (isSupremo) return null;
     }
     return me.data?.branch_id ?? null;
   })();

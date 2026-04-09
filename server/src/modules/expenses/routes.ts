@@ -12,7 +12,9 @@ const ALLOWED_ROLES = ['administrador_general', 'encargado_sucursal', 'admin_sup
 
 router.get('/', asyncHandler(async (req, res) => {
   const user = (req as any).user;
-  const branchId: number | null = user?.branchId ?? null;
+  const canOverride = ['admin_supremo', 'administrador_general'].includes(user?.role);
+  const overrideBranch = canOverride && req.query.branch_id ? Number(req.query.branch_id) : null;
+  const branchId: number | null = overrideBranch ?? user?.branchId ?? null;
   const days = Math.min(parseInt((req.query.days as string) ?? '30'), 365);
 
   const condition = branchId

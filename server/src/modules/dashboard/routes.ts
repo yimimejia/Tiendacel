@@ -11,7 +11,9 @@ router.use(authMiddleware);
 
 router.get('/stats', asyncHandler(async (req, res) => {
   const user = (req as any).user;
-  const branchId: number | null = user?.branchId ?? null;
+  const canOverride = ['admin_supremo', 'administrador_general'].includes(user?.role);
+  const overrideBranch = canOverride && req.query.branch_id ? Number(req.query.branch_id) : null;
+  const branchId: number | null = overrideBranch ?? user?.branchId ?? null;
 
   if (!branchId) {
     res.json({ success: true, data: null });
@@ -53,7 +55,9 @@ router.get('/stats', asyncHandler(async (req, res) => {
 
 router.get('/audit-logs', asyncHandler(async (req, res) => {
   const user = (req as any).user;
-  const branchId: number | null = user?.branchId ?? null;
+  const canOverride = ['admin_supremo', 'administrador_general'].includes(user?.role);
+  const overrideBranch = canOverride && req.query.branch_id ? Number(req.query.branch_id) : null;
+  const branchId: number | null = overrideBranch ?? user?.branchId ?? null;
   const limit = Math.min(parseInt((req.query.limit as string) ?? '50'), 200);
 
   const condition = branchId
@@ -78,7 +82,9 @@ router.get('/audit-logs', asyncHandler(async (req, res) => {
 
 router.get('/reports/sales', asyncHandler(async (req, res) => {
   const user = (req as any).user;
-  const branchId: number | null = user?.branchId ?? null;
+  const canOverride = ['admin_supremo', 'administrador_general'].includes(user?.role);
+  const overrideBranch = canOverride && req.query.branch_id ? Number(req.query.branch_id) : null;
+  const branchId: number | null = overrideBranch ?? user?.branchId ?? null;
   const days = Math.min(parseInt((req.query.days as string) ?? '30'), 365);
 
   const condition = branchId
@@ -302,22 +308,62 @@ router.get('/sales', asyncHandler(async (req, res) => {
 router.patch('/sales/:id/approve-deletion', asyncHandler(async (req, res) => {
   const user = (req as any).user;
   if (!['administrador_general', 'encargado_sucursal', 'admin_supremo'].includes(user.role)) {
-    throw new HttpError(403, 'No autorizado');
+    throw new HttpError(403, 'No autorizado para aprobar eliminación');
   }
-  res.json({ success: true, message: 'Eliminación aprobada' });
+  const saleId = Number(req.params.id);
+
+  const saleItems = await db.execute<{ product_id: number; quantity: string; branch_id: number }>(sql`
+    SELECT si.product_id, si.quantity::text, s.branch_id
+    FROM sale_items si
+    JOIN sales s ON s.id = si.sale_id
+    WHERE si.sale_id = ${saleId}
+  `);
+
+  for (const item of saleItems.rows) {
+    await db.execute(sql`
+      UPDATE inventories SET current_stock = current_stock + ${parseInt(item.quantity)}, updated_at = NOW()
+      WHERE product_id = ${item.product_id} AND branch_id = ${item.branch_id}
+    `);
+  }
+
+  await db.execute(sql`DELETE FROM sale_items WHERE sale_id = ${saleId}`);
+  await db.execute(sql`DELETE FROM sales WHERE id = ${saleId}`);
+
+  res.json({ success: true, message: 'Venta eliminada correctamente' });
 }));
 
 router.delete('/sales/:id', asyncHandler(async (req, res) => {
   const user = (req as any).user;
-  if (user.role !== 'caja_ventas') {
+  if (!['caja_ventas', 'administrador_general', 'encargado_sucursal', 'admin_supremo'].includes(user.role)) {
     throw new HttpError(403, 'No autorizado');
   }
-  res.json({ success: true, message: 'Venta eliminada' });
+  const saleId = Number(req.params.id);
+
+  const saleItems = await db.execute<{ product_id: number; quantity: string; branch_id: number }>(sql`
+    SELECT si.product_id, si.quantity::text, s.branch_id
+    FROM sale_items si
+    JOIN sales s ON s.id = si.sale_id
+    WHERE si.sale_id = ${saleId}
+  `);
+
+  for (const item of saleItems.rows) {
+    await db.execute(sql`
+      UPDATE inventories SET current_stock = current_stock + ${parseInt(item.quantity)}, updated_at = NOW()
+      WHERE product_id = ${item.product_id} AND branch_id = ${item.branch_id}
+    `);
+  }
+
+  await db.execute(sql`DELETE FROM sale_items WHERE sale_id = ${saleId}`);
+  await db.execute(sql`DELETE FROM sales WHERE id = ${saleId}`);
+
+  res.json({ success: true, message: 'Venta eliminada correctamente' });
 }));
 
 router.get('/low-stock', asyncHandler(async (req, res) => {
   const user = (req as any).user;
-  const branchId: number | null = user?.branchId ?? null;
+  const canOverride = ['admin_supremo', 'administrador_general'].includes(user?.role);
+  const overrideBranch = canOverride && req.query.branch_id ? Number(req.query.branch_id) : null;
+  const branchId: number | null = overrideBranch ?? user?.branchId ?? null;
   if (!branchId) {
     res.json({ success: true, data: [] });
     return;
