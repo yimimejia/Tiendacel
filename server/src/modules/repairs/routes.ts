@@ -5,6 +5,7 @@ import { validateRequest } from '../../middlewares/validate-request.js';
 import { asyncHandler } from '../../utils/async-handler.js';
 import {
   assignRepairController,
+  createRepairController,
   getRepairInvoiceController,
   listAllCompletedRepairsController,
   listAssignableTechniciansController,
@@ -12,12 +13,13 @@ import {
   takeRepairWorkController,
   updateRepairStatusController,
 } from './controller.js';
-import { assignRepairSchema, repairIdParamSchema } from './schema.js';
+import { assignRepairSchema, createRepairSchema, repairIdParamSchema } from './schema.js';
 
 const router = Router();
 router.use(authMiddleware);
 
 router.get('/', asyncHandler(listRepairsController));
+router.post('/', validateRequest({ body: createRepairSchema }), asyncHandler(createRepairController));
 router.get('/completed', asyncHandler(listAllCompletedRepairsController));
 router.get('/assignable-technicians', asyncHandler(listAssignableTechniciansController));
 router.post('/:id/take-work', roleMiddleware(['tecnico', 'mensajero', 'empleado', 'encargado_sucursal']), validateRequest({ params: repairIdParamSchema }), asyncHandler(takeRepairWorkController));

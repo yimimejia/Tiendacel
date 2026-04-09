@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { customers, devices, roles, users } from '../../db/schema.js';
+import { customers, deviceTypes, devices, roles, users } from '../../db/schema.js';
 import { HttpError } from '../../utils/http-error.js';
 
 interface RequestUser {
@@ -181,6 +181,104 @@ export async function getRepairInvoiceInfo(repairId: number, user: RequestUser) 
     customer: customer ? { id: customer.id, full_name: customer.fullName, phone: customer.phone, email: customer.email, address: customer.address } : null,
     sale,
     sale_items: saleItems,
+  };
+}
+
+export async function createRepair(
+  input: {
+    customer_name: string;
+    customer_phone: string;
+    contact_phone?: string | null;
+    brand: string;
+    model: string;
+    issue: string;
+    requires_evaluation?: boolean;
+    total?: number;
+    advance?: number;
+    assigned_to?: number | null;
+    branch_id?: number;
+  },
+  user: RequestUser,
+) {
+  const branchId = input.branch_id ?? user.branchId;
+  if (!branchId) throw new HttpError(400, 'Se requiere una sucursal para crear la reparación');
+
+  const allowedRoles = ['administrador_general', 'admin_supremo', 'encargado_sucursal', 'caja_ventas', 'tecnico', 'empleado', 'mensajero'];
+  if (!allowedRoles.includes(user.role)) throw new HttpError(403, 'No autorizado para crear reparaciones');
+
+  if (user.role !== 'admin_supremo' && user.role !== 'administrador_general' && user.branchId && user.branchId !== branchId) {
+    throw new HttpError(403, 'No puedes crear reparaciones en otra sucursal');
+  }
+
+  let [customer] = await db
+    .select()
+    .from(customers)
+    .where(and(eq(customers.branchId, branchId), sql`${customers.phone} = ${input.customer_phone}`))
+    .limit(1);
+
+  if (!customer) {
+    const [created] = await db
+      .insert(customers)
+      .values({ fullName: input.customer_name, phone: input.customer_phone, branchId })
+      .returning();
+    customer = created;
+  }
+
+  const [defaultDeviceType] = await db.select().from(deviceTypes).where(eq(deviceTypes.name, 'Celular')).limit(1);
+  const deviceTypeId = defaultDeviceType?.id ?? 1;
+
+  const seqResult = await db.execute<{ max_seq: number | null }>(sql`SELECT MAX(device_sequence_number) AS max_seq FROM devices`);
+  const nextSeq = (Number(seqResult.rows[0]?.max_seq ?? 0) + 1);
+  const deviceNumber = `REP-${String(nextSeq).padStart(6, '0')}`;
+
+  const requiresEval = input.requires_evaluation ?? false;
+  const repairTotal = requiresEval ? 0 : (input.total ?? 0);
+  const initialPayment = requiresEval ? 0 : (input.advance ?? 0);
+  const pendingBalance = Math.max(0, repairTotal - initialPayment);
+
+  const technicianId = input.assigned_to ?? null;
+
+  const [device] = await db
+    .insert(devices)
+    .values({
+      deviceNumber,
+      deviceSequenceNumber: nextSeq,
+      customerId: customer.id,
+      branchId,
+      technicianId,
+      deviceTypeId,
+      brand: input.brand,
+      model: input.model,
+      reportedIssue: input.issue,
+      internalStatus: 'Recibido',
+      customerVisibleStatus: 'Pendiente',
+      repairTotal: String(repairTotal),
+      initialPayment: String(initialPayment),
+      pendingBalance: String(pendingBalance),
+      receivedAt: new Date(),
+    })
+    .returning();
+
+  return {
+    ...toRepairResponse({
+      id: device.id,
+      deviceNumber: device.deviceNumber,
+      branchId: device.branchId,
+      customerId: device.customerId,
+      customerName: customer.fullName,
+      customerPhone: customer.phone,
+      model: device.model,
+      brand: device.brand,
+      reportedIssue: device.reportedIssue,
+      internalStatus: device.internalStatus,
+      technicianId: device.technicianId,
+      technicianName: null,
+      receivedAt: device.receivedAt,
+      deliveredAt: device.deliveredAt ?? null,
+    }),
+    customer_id: customer.id,
+    customer_name: customer.fullName,
+    customer_phone: customer.phone,
   };
 }
 

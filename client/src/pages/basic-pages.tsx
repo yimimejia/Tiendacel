@@ -2540,6 +2540,20 @@ export function VentasPage() {
     return me.data?.branch_id ?? null;
   })();
 
+  const repairQueryClient = useQueryClient();
+  const createRepairMutation = useMutation({
+    mutationFn: async (body: Record<string, unknown>) => {
+      const res = await apiRequest<{ repair_number: string; customer_name: string }>('/repairs', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      return res.data;
+    },
+    onSuccess: () => {
+      repairQueryClient.invalidateQueries({ queryKey: ['repairs'] });
+    },
+  });
+
   const assignable = useQuery({
     queryKey: ['repairs', 'assignable-techs', posBranchId],
     enabled: showRepairModal && Boolean(posBranchId),
@@ -2851,7 +2865,7 @@ export function VentasPage() {
               <option value="">Seleccionar...</option>
               <option value={me.data?.full_name ?? ''}>{me.data?.full_name ?? 'Vendedor actual'}</option>
             </Select>
-            <Input label="Cliente — buscar por nombre o teléfono" value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)} />
+            <Input label="Cliente" value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)} />
             <Select label="Forma de pago" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
               <option value="efectivo">Efectivo</option>
               <option value="transferencia">Transferencia</option>
@@ -3064,10 +3078,31 @@ export function VentasPage() {
             <form
               autoComplete="off"
               className="grid grid-cols-1 md:grid-cols-2 gap-3"
-              onSubmit={repairForm.handleSubmit(() => {
-                repairForm.reset();
-                setOrderSequence((prev) => prev + 1);
-                setShowRepairModal(false);
+              onSubmit={repairForm.handleSubmit(async (v) => {
+                const brand = v.brand === 'nuevo' ? (v.custom_brand || v.brand) : v.brand;
+                const model = v.model === 'nuevo' ? (v.custom_model || v.model) : v.model;
+                const payload: Record<string, unknown> = {
+                  customer_name: v.customer_name,
+                  customer_phone: v.customer_phone,
+                  contact_phone: v.contact_phone || null,
+                  brand,
+                  model,
+                  issue: v.issue,
+                  requires_evaluation: v.requires_evaluation,
+                  total: v.total ?? 0,
+                  advance: v.advance ?? 0,
+                  assigned_to: v.assigned_to ? Number(v.assigned_to) : null,
+                };
+                if (posBranchId) payload.branch_id = posBranchId;
+                try {
+                  const result = await createRepairMutation.mutateAsync(payload);
+                  window.alert(`✅ Reparación ${result?.repair_number ?? ''} creada correctamente.\nCliente guardado en módulo de Clientes.`);
+                  repairForm.reset();
+                  setOrderSequence((prev) => prev + 1);
+                  setShowRepairModal(false);
+                } catch (err: any) {
+                  window.alert(`❌ Error al guardar: ${err?.message ?? 'Error desconocido'}`);
+                }
               })}
             >
               <div className="md:col-span-2 rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-700">
@@ -3118,7 +3153,9 @@ export function VentasPage() {
               </Select>
               <div className="md:col-span-2 flex justify-end gap-2">
                 <Btn type="button" variant="ghost" onClick={() => setShowRepairModal(false)}>Cancelar</Btn>
-                <Btn type="submit">Guardar recepción</Btn>
+                <Btn type="submit" disabled={createRepairMutation.isPending}>
+                  {createRepairMutation.isPending ? 'Guardando...' : 'Guardar recepción'}
+                </Btn>
               </div>
             </form>
           </Card>

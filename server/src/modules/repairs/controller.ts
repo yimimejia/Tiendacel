@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { createAuditLog } from '../../services/audit-log.service.js';
 import { sendSuccess } from '../../utils/api-response.js';
-import { assignRepair, getAssignableTechnicians, getRepairInvoiceInfo, listAllBranchCompleted, listRepairsForUser, takeRepairWork, updateRepairStatus } from './service.js';
+import { assignRepair, createRepair, getAssignableTechnicians, getRepairInvoiceInfo, listAllBranchCompleted, listRepairsForUser, takeRepairWork, updateRepairStatus } from './service.js';
 
 function getRequestUser(req: Request) {
   return {
@@ -9,6 +9,22 @@ function getRequestUser(req: Request) {
     role: String(req.user?.role),
     branchId: req.user?.branchId ? Number(req.user.branchId) : null,
   };
+}
+
+export async function createRepairController(req: Request, res: Response) {
+  const user = getRequestUser(req);
+  const data = await createRepair(req.body, user);
+
+  await createAuditLog({
+    userId: user.id,
+    branchId: data.branch_id,
+    action: 'repair_create',
+    entity: 'repairs',
+    entityId: String(data.id),
+    description: `Reparación ${data.repair_number} creada para ${data.customer_name}`,
+  });
+
+  return sendSuccess(res, 'Reparación creada correctamente', data);
 }
 
 export async function listRepairsController(req: Request, res: Response) {
