@@ -16,6 +16,7 @@ import { productsRoutes } from '../modules/products/routes.js';
 import { ncfRoutes } from '../modules/ncf/routes.js';
 import { dashboardRoutes, inventoryRouter } from '../modules/dashboard/routes.js';
 import { expensesRoutes } from '../modules/expenses/routes.js';
+import { cajaRoutes } from '../modules/caja/routes.js';
 
 const router = Router();
 
@@ -44,5 +45,6 @@ router.use('/ncf', ncfRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/inventory', inventoryRouter);
 router.use('/expenses', expensesRoutes);
+router.use('/caja', cajaRoutes);
 
 export { router as apiRouter };

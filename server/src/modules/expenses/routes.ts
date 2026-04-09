@@ -8,7 +8,7 @@ import { HttpError } from '../../utils/http-error.js';
 const router = Router();
 router.use(authMiddleware);
 
-const ALLOWED_ROLES = ['administrador_general', 'encargado_sucursal', 'admin_supremo'];
+const ALLOWED_ROLES = ['administrador_general', 'encargado_sucursal', 'admin_supremo', 'caja_ventas'];
 
 router.get('/', asyncHandler(async (req, res) => {
   const user = (req as any).user;
@@ -21,11 +21,11 @@ router.get('/', asyncHandler(async (req, res) => {
 
   const rows = await db.execute<{
     id: number; amount: string; category: string; description: string;
-    payment_method: string; reference: string | null; created_at: string;
+    payment_method: string; reference: string | null; from_cash: boolean; created_at: string;
     creator_name: string;
   }>(sql`
     SELECT e.id, e.amount, e.category, e.description, e.payment_method,
-           e.reference, e.created_at,
+           e.reference, e.from_cash, e.created_at,
            COALESCE(u.full_name, 'Sistema') AS creator_name
     FROM expenses e
     LEFT JOIN users u ON u.id = e.created_by_user_id
@@ -43,17 +43,19 @@ router.post('/', asyncHandler(async (req, res) => {
   if (!ALLOWED_ROLES.includes(user?.role)) throw new HttpError(403, 'No autorizado para registrar gastos');
   if (!user?.branchId) throw new HttpError(400, 'No tienes sucursal asignada');
 
-  const { amount, category, description, payment_method, reference } = req.body ?? {};
+  const { amount, category, description, payment_method, reference, from_cash } = req.body ?? {};
   if (!amount || !description) throw new HttpError(400, 'El monto y la descripción son obligatorios');
   if (Number(amount) <= 0) throw new HttpError(400, 'El monto debe ser mayor a 0');
 
-  const [created] = await db.execute<{ id: number }>(sql`
-    INSERT INTO expenses (branch_id, created_by_user_id, amount, category, description, payment_method, reference)
-    VALUES (${user.branchId}, ${user.id}, ${Number(amount)}, ${category ?? 'general'}, ${description}, ${payment_method ?? 'efectivo'}, ${reference ?? null})
-    RETURNING id, amount, category, description, payment_method, reference, created_at
+  const fromCashVal = from_cash === true || from_cash === 'true';
+
+  const rows = await db.execute<{ id: number }>(sql`
+    INSERT INTO expenses (branch_id, created_by_user_id, amount, category, description, payment_method, reference, from_cash)
+    VALUES (${user.branchId}, ${user.id}, ${Number(amount)}, ${category ?? 'general'}, ${description}, ${payment_method ?? 'efectivo'}, ${reference ?? null}, ${fromCashVal})
+    RETURNING id, amount, category, description, payment_method, reference, from_cash, created_at
   `);
 
-  res.status(201).json({ success: true, data: created });
+  res.status(201).json({ success: true, data: rows.rows[0] });
 }));
 
 router.delete('/:id', asyncHandler(async (req, res) => {

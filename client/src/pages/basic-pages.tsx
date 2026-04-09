@@ -1976,11 +1976,12 @@ export function GastosPage() {
   const [description, setDescription] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('efectivo');
   const [reference, setReference] = useState('');
+  const [fromCash, setFromCash] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [days, setDays] = useState('30');
 
   const role = me.data?.role ?? '';
-  const canCreate = ['administrador_general', 'encargado_sucursal', 'admin_supremo'].includes(role);
+  const canCreate = ['administrador_general', 'encargado_sucursal', 'admin_supremo', 'caja_ventas'].includes(role);
 
   const expensesQuery = useQuery({
     queryKey: ['expenses', days],
@@ -1991,7 +1992,7 @@ export function GastosPage() {
   const createMutation = useMutation({
     mutationFn: async () => apiRequest('/expenses', {
       method: 'POST',
-      body: JSON.stringify({ amount: parseFloat(amount), category, description, payment_method: paymentMethod, reference: reference || null }),
+      body: JSON.stringify({ amount: parseFloat(amount), category, description, payment_method: paymentMethod, reference: reference || null, from_cash: fromCash }),
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['expenses'] });
@@ -1999,6 +2000,7 @@ export function GastosPage() {
       setAmount('');
       setDescription('');
       setReference('');
+      setFromCash(false);
       setFormError(null);
     },
     onError: (e: any) => setFormError(e?.message ?? 'Error al registrar gasto'),
@@ -2064,6 +2066,12 @@ export function GastosPage() {
                 placeholder="Opcional..." />
             </div>
           </div>
+          <label className="flex items-center gap-3 cursor-pointer select-none">
+            <input type="checkbox" checked={fromCash} onChange={e => setFromCash(e.target.checked)}
+              className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" />
+            <span className="text-sm text-slate-700 font-medium">Este gasto salió de la caja</span>
+            <span className="text-xs text-slate-400">(se descontará del cuadre de caja)</span>
+          </label>
           <button onClick={() => { if (!amount || !description) { setFormError('El monto y la descripción son obligatorios'); return; } createMutation.mutate(); }}
             disabled={createMutation.isPending}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
@@ -2102,6 +2110,7 @@ export function GastosPage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs bg-slate-100 text-slate-600 rounded-full px-2 py-0.5 capitalize">{g.category}</span>
                       <span className="text-xs bg-blue-50 text-blue-700 rounded-full px-2 py-0.5 capitalize">{g.payment_method}</span>
+                      {g.from_cash && <span className="text-xs bg-orange-100 text-orange-700 rounded-full px-2 py-0.5 font-medium">💵 Salió de caja</span>}
                     </div>
                     <p className="text-sm font-medium text-slate-800 mt-1">{g.description}</p>
                     {g.reference && <p className="text-xs text-slate-400">Ref: {g.reference}</p>}
@@ -2222,6 +2231,160 @@ export function ContabilidadPage() {
     </section>
   );
 }
+function CuadreCajaModal({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient();
+  const [openingBalance, setOpeningBalance] = useState('');
+  const [actualCash, setActualCash] = useState('');
+  const [notes, setNotes] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const summaryQuery = useQuery({
+    queryKey: ['caja-summary'],
+    queryFn: async () => (await apiRequest<{ cashSales: number; cashExpenses: number; since: string }>('/caja/summary')).data,
+    staleTime: 10000,
+  });
+
+  const opening = parseFloat(openingBalance || '0') || 0;
+  const actual = parseFloat(actualCash || '0') || 0;
+  const cashSales = summaryQuery.data?.cashSales ?? 0;
+  const cashExpenses = summaryQuery.data?.cashExpenses ?? 0;
+  const expected = opening + cashSales - cashExpenses;
+  const difference = actual - expected;
+  const hasActual = actualCash !== '';
+
+  const diffColor = !hasActual ? 'text-slate-400'
+    : Math.abs(difference) < 0.01 ? 'text-green-600'
+    : difference > 0 ? 'text-yellow-600'
+    : 'text-red-600';
+
+  const diffLabel = !hasActual ? '—'
+    : Math.abs(difference) < 0.01 ? 'Cuadre exacto ✓'
+    : difference > 0 ? `Sobrante RD$ ${difference.toLocaleString('es-DO', { minimumFractionDigits: 2 })} ⚠`
+    : `Faltante RD$ ${Math.abs(difference).toLocaleString('es-DO', { minimumFractionDigits: 2 })} ✗`;
+
+  const saveMutation = useMutation({
+    mutationFn: async () => apiRequest('/caja/sessions', {
+      method: 'POST',
+      body: JSON.stringify({
+        opening_balance: opening,
+        actual_cash: actual,
+        notes: notes || null,
+        period_from: todayStart.toISOString(),
+        period_to: new Date().toISOString(),
+      }),
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['caja-sessions'] });
+      setSuccess(true);
+    },
+    onError: (e: any) => setError(e?.message ?? 'Error al guardar cuadre'),
+  });
+
+  const fmt = (n: number) => `RD$ ${n.toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+
+  if (success) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-8 text-center space-y-4">
+          <div className="mx-auto w-16 h-16 rounded-full bg-green-100 flex items-center justify-center text-3xl">✓</div>
+          <h2 className="text-xl font-bold text-slate-900">Cuadre guardado</h2>
+          <p className="text-slate-600 text-sm">El cuadre de caja ha sido registrado correctamente.</p>
+          <button onClick={onClose} className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-sm font-medium hover:bg-slate-700">Cerrar</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md space-y-5 overflow-y-auto max-h-[95vh]">
+        <div className="flex items-center justify-between px-6 pt-6">
+          <h2 className="text-xl font-bold text-slate-900">⚖ Cuadre de caja</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">✕</button>
+        </div>
+
+        <div className="px-6 space-y-4">
+          {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+
+          <div className="bg-slate-50 rounded-xl p-4 space-y-2 text-sm">
+            <p className="font-semibold text-slate-700 mb-2">Resumen del período (hoy)</p>
+            <div className="flex justify-between">
+              <span className="text-slate-500">Ventas en efectivo</span>
+              <span className="font-medium text-green-600">{summaryQuery.isLoading ? '...' : fmt(cashSales)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">Gastos de caja</span>
+              <span className="font-medium text-red-500">−{summaryQuery.isLoading ? '...' : fmt(cashExpenses)}</span>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Fondo inicial (RD$)</label>
+            <input type="number" min="0" step="0.01" value={openingBalance} onChange={e => setOpeningBalance(e.target.value)}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="0.00 — dinero con que abrió la caja" />
+          </div>
+
+          <div className="bg-blue-50 rounded-xl p-4 space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-slate-600">Fondo inicial</span>
+              <span>{fmt(opening)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-600">+ Ventas efectivo</span>
+              <span className="text-green-600">{fmt(cashSales)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-600">− Gastos de caja</span>
+              <span className="text-red-500">{fmt(cashExpenses)}</span>
+            </div>
+            <div className="flex justify-between font-bold border-t border-blue-200 pt-2 mt-1">
+              <span>Efectivo esperado</span>
+              <span>{fmt(expected)}</span>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Efectivo contado (RD$) <span className="text-red-500">*</span></label>
+            <input type="number" min="0" step="0.01" value={actualCash} onChange={e => setActualCash(e.target.value)}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="0.00 — dinero que hay físicamente en caja" />
+          </div>
+
+          {hasActual && (
+            <div className={`rounded-xl p-4 text-center font-bold text-lg ${
+              Math.abs(difference) < 0.01 ? 'bg-green-50' : difference > 0 ? 'bg-yellow-50' : 'bg-red-50'
+            }`}>
+              <span className={diffColor}>{diffLabel}</span>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Observaciones</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              placeholder="Opcional..." />
+          </div>
+        </div>
+
+        <div className="px-6 pb-6 flex gap-3">
+          <button onClick={onClose} className="flex-1 py-2.5 border border-slate-300 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50">Cancelar</button>
+          <button
+            onClick={() => { if (!actualCash) { setError('Ingresa el efectivo contado'); return; } setError(null); saveMutation.mutate(); }}
+            disabled={saveMutation.isPending}
+            className="flex-1 py-2.5 bg-slate-900 text-white rounded-xl text-sm font-medium hover:bg-slate-700 disabled:opacity-50">
+            {saveMutation.isPending ? 'Guardando...' : 'Guardar cuadre'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function VentasPage() {
   const me = useMe();
   const queryClient = useQueryClient();
@@ -2240,6 +2403,7 @@ export function VentasPage() {
     total_linea: number;
   }>>([]);
   const [showRepairModal, setShowRepairModal] = useState(false);
+  const [showCuadreModal, setShowCuadreModal] = useState(false);
   const [orderSequence, setOrderSequence] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState('efectivo');
   const [mixedMethod, setMixedMethod] = useState('tarjeta');
@@ -2562,9 +2726,13 @@ export function VentasPage() {
 
   return (
     <section className="space-y-5">
-      <Card className="p-4 flex items-center justify-between">
+      {showCuadreModal && <CuadreCajaModal onClose={() => setShowCuadreModal(false)} />}
+      <Card className="p-4 flex items-center justify-between gap-3 flex-wrap">
         <h2 className="text-2xl font-bold text-slate-900">POS Vendedor</h2>
-        <Btn variant="soft" onClick={() => setShowRepairModal(true)}>+ Añadir equipo para reparar</Btn>
+        <div className="flex gap-2 flex-wrap">
+          <Btn variant="soft" onClick={() => setShowRepairModal(true)}>+ Añadir equipo para reparar</Btn>
+          <Btn variant="soft" onClick={() => setShowCuadreModal(true)}>⚖ Cuadrar caja</Btn>
+        </div>
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
@@ -2855,6 +3023,74 @@ export function VentasPage() {
     </section>
   );
 }
+export function HistorialCuadresPage() {
+  const sessionsQuery = useQuery({
+    queryKey: ['caja-sessions'],
+    queryFn: async () => (await apiRequest<any[]>('/caja/sessions')).data,
+    staleTime: 30000,
+  });
+
+  const fmt = (n: string | number) => `RD$ ${parseFloat(String(n)).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+
+  function statusBadge(status: string, difference: string) {
+    const diff = parseFloat(difference);
+    if (Math.abs(diff) < 0.01) return <span className="inline-flex items-center gap-1 text-xs font-semibold bg-green-100 text-green-700 rounded-full px-2.5 py-0.5">✓ Exacto</span>;
+    if (diff > 0) return <span className="inline-flex items-center gap-1 text-xs font-semibold bg-yellow-100 text-yellow-700 rounded-full px-2.5 py-0.5">⚠ Sobrante</span>;
+    return <span className="inline-flex items-center gap-1 text-xs font-semibold bg-red-100 text-red-700 rounded-full px-2.5 py-0.5">✗ Faltante</span>;
+  }
+
+  return (
+    <section className="space-y-5">
+      <PanelTitulo titulo="Historial de cuadres" descripcion="Registro de todos los cuadres de caja realizados." />
+
+      {sessionsQuery.isLoading ? <LoadingState /> : sessionsQuery.isError ? <ErrorState message="Error cargando historial" /> :
+        (sessionsQuery.data ?? []).length === 0 ? <EmptyState message="No hay cuadres registrados aún." /> : (
+          <div className="space-y-3">
+            {(sessionsQuery.data ?? []).map((s: any) => {
+              const diff = parseFloat(s.difference);
+              const rowBg = Math.abs(diff) < 0.01 ? '' : diff > 0 ? 'border-l-4 border-l-yellow-400' : 'border-l-4 border-l-red-400';
+              return (
+                <Card key={s.id} className={`p-4 ${rowBg}`}>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {statusBadge(s.status, s.difference)}
+                        <span className="text-xs text-slate-500">{new Date(s.created_at).toLocaleString('es-DO')}</span>
+                        <span className="text-xs text-slate-400">· {s.creator_name}</span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-1 mt-2 text-sm">
+                        <div>
+                          <p className="text-xs text-slate-400">Fondo inicial</p>
+                          <p className="font-medium">{fmt(s.opening_balance)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-400">Esperado</p>
+                          <p className="font-medium">{fmt(s.expected_cash)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-400">Contado</p>
+                          <p className="font-medium">{fmt(s.actual_cash)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-400">Diferencia</p>
+                          <p className={`font-bold ${Math.abs(diff) < 0.01 ? 'text-green-600' : diff > 0 ? 'text-yellow-600' : 'text-red-600'}`}>
+                            {diff >= 0 ? '+' : ''}{fmt(s.difference)}
+                          </p>
+                        </div>
+                      </div>
+                      {s.notes && <p className="text-xs text-slate-500 mt-1 italic">"{s.notes}"</p>}
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        )
+      }
+    </section>
+  );
+}
+
 type ReportDay = { date: string; salesCount: number; revenue: number; itemsSold: number };
 type ReportTotals = { sales: number; revenue: number };
 
