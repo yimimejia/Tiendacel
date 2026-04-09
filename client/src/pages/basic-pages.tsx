@@ -1396,15 +1396,30 @@ export function VentasPage() {
     },
   });
 
+  const posRole = me.data?.role ?? '';
+  const posBranchId = (() => {
+    if (posRole === 'admin_supremo') {
+      try {
+        const stored = sessionStorage.getItem('impersonatedBranch');
+        if (stored) return JSON.parse(stored)?.id ?? null;
+      } catch {}
+      return null;
+    }
+    return me.data?.branch_id ?? null;
+  })();
+
   const assignable = useQuery({
-    queryKey: ['repairs', 'assignable-techs', me.data?.branch_id],
-    enabled: showRepairModal && Boolean(me.data?.branch_id),
+    queryKey: ['repairs', 'assignable-techs', posBranchId],
+    enabled: showRepairModal && Boolean(posBranchId),
     queryFn: async () => (await apiRequest<AssignableTech[]>('/repairs/assignable-technicians')).data,
   });
   const branchSettingsQuery = useQuery({
-    queryKey: ['branch-settings-pos', me.data?.branch_id],
-    enabled: Boolean(me.data?.branch_id),
-    queryFn: async () => (await apiRequest<any>('/branch-settings')).data,
+    queryKey: ['branch-settings-pos', posBranchId],
+    enabled: me.data !== undefined,
+    queryFn: async () => {
+      const suffix = posBranchId ? `?branch_id=${posBranchId}` : '';
+      return (await apiRequest<any>(`/branch-settings${suffix}`)).data;
+    },
     staleTime: 30000,
   });
 
@@ -1428,10 +1443,7 @@ export function VentasPage() {
         : 'consumidor_final';
   const currentNcf = (() => {
     const settings = branchSettingsQuery.data?.feature_flags?.ncf?.[ncfKey];
-    const start = String(settings?.current ?? settings?.range_start ?? '');
-    const end = String(settings?.range_end ?? '');
-    if (start && end) return `${start} - ${end}`;
-    return start || end || `FAC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+    return String(settings?.current ?? settings?.range_start ?? '');
   })();
 
   useEffect(() => {
@@ -1449,14 +1461,12 @@ export function VentasPage() {
   const itbisTotal = cart.reduce((acc, item) => acc + Number(item.itbis_monto ?? 0), 0);
   const totalVenta = subtotalBruto;
   const mixedRemaining = Math.max(0, totalVenta - cashAmount);
+  const ncfData = branchSettingsQuery.data?.feature_flags?.ncf ?? {};
   const ncfMap: Record<string, string> = {
-    'Consumidor final': currentNcf,
-    'Crédito fiscal':
-      String(branchSettingsQuery.data?.feature_flags?.ncf?.credito_fiscal?.current ?? branchSettingsQuery.data?.feature_flags?.ncf?.credito_fiscal?.range_start ?? 'B01-'),
-    Gubernamental:
-      String(branchSettingsQuery.data?.feature_flags?.ncf?.gubernamental?.current ?? branchSettingsQuery.data?.feature_flags?.ncf?.gubernamental?.range_start ?? 'B15-'),
-    'Régimen especial':
-      String(branchSettingsQuery.data?.feature_flags?.ncf?.regimen_especial?.current ?? branchSettingsQuery.data?.feature_flags?.ncf?.regimen_especial?.range_start ?? 'B14-'),
+    'Consumidor final': String(ncfData.consumidor_final?.current ?? ncfData.consumidor_final?.range_start ?? ''),
+    'Crédito fiscal': String(ncfData.credito_fiscal?.current ?? ncfData.credito_fiscal?.range_start ?? ''),
+    'Gubernamental': String(ncfData.gubernamental?.current ?? ncfData.gubernamental?.range_start ?? ''),
+    'Régimen especial': String(ncfData.regimen_especial?.current ?? ncfData.regimen_especial?.range_start ?? ''),
   };
   const visibleProducts = inventoryItems.filter((item) => item.name.toLowerCase().includes(productSearch.toLowerCase()));
 
@@ -1526,7 +1536,7 @@ export function VentasPage() {
       return;
     }
     const settings = branchSettingsQuery.data ?? {};
-    const ncfLabel = currentNcf || ncfMap[comprobanteType];
+    const ncfLabel = ncfMap[comprobanteType] || currentNcf || '--';
     const negocio = settings.business_name || settings.fiscal_name || me.data?.branch_name || 'Mi Negocio';
     const subtotalNeto = cart.reduce((acc, line) => acc + Number(line.subtotal ?? line.precio_unitario * line.cantidad), 0);
     const itbisTotal = cart.reduce((acc, line) => acc + Number(line.itbis_monto ?? 0), 0);
